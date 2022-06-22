@@ -13,7 +13,7 @@ This doc is to show how to setup OCI Events and Functions to make them work in s
 ## Setup steps
 ### Create a dynamic group and related policy
 1. First of all, you should have a valid compartment for all the resource mentioned below working. Get your compartment OCID.
-2. Go to the Dynamic Group and create the following matching rule:
+2. Go to `Governance and Administration >> Dynamic Groups` and create the following matching rule:
     ```
     ALL {resource.type = 'fnfunc', resource.compartment.id = 'ocid1.compartment.oc1..aaaaaaaabunvwyrhipu5nm7unj3buggkfuyogspduvphh3fjd7zqq4hjkpja'}
     ```
@@ -100,7 +100,45 @@ Brief explain:
 
 Refer to the [official doc](https://docs.oracle.com/en-us/iaas/Content/Events/Concepts/eventsoverview.htm) for more information.
 
-### Set Data Flow
+**nit**: One thing deserves mentioning is the content of event is not configurable by developers. A sample event for **object event** looks like the following:
+```
+{
+  "eventType" : "com.oraclecloud.objectstorage.updatebucket",
+  "cloudEventsVersion" : "0.1",
+  "eventTypeVersion" : "2.0",
+  "source" : "ObjectStorage",
+  "eventTime" : "2022-06-16T22:29:47Z",
+  "contentType" : "application/json",
+  "data" : {
+    "compartmentId" : "ocid1.compartment.oc1..xxxxxxx",
+    "compartmentName" : "xxxxxx",
+    "resourceName" : "xxxxxxxx",
+    "resourceId" : "/n/xxxxxx/b/xxxxxx/",
+    "availabilityDomain" : "PHX-AD-1",
+    "freeformTags" : { },
+    "definedTags" : {
+      "Oracle-Tags" : {
+        "CreatedBy" : "xxxxxx",
+        "CreatedOn" : "2022-06-16T21:44:45.680Z"
+      }
+    },
+    "additionalDetails" : {
+      "bucketName" : "xxxxxx",
+      "publicAccessType" : "NoPublicAccess",
+      "versioning" : "Disabled",
+      "namespace" : "xxxxxxx",
+      "eTag" : "xxxx-xxxxx-xxxxx-xxxxx"
+    }
+  },
+  "eventID" : "xxxx-xxxxx-xxxxx-xxxxx",
+  "extensions" : {
+    "compartmentId" : "ocid1.compartment.oc1..xxxxxxx"
+  }
+}
+```
+Different event types have different event structure. You can figure out the details by setting up an [notification](https://docs.oracle.com/en-us/iaas/Content/Notification/Concepts/notificationoverview.htm) triggered by an event that sending email, which will include the complete event content in json. See more details in [official doc](https://docs.oracle.com/en-us/iaas/Content/Events/Reference/eventenvelopereference.htm).
+
+### Set up Data Flow
 Follow the [Remove unnecessary column](./remove_unnecessary_columns.md). No change is necessary.
 
 ## Test

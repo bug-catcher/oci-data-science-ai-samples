@@ -8,6 +8,7 @@ import oci.object_storage
 import oci.data_flow
 
 signer = oci.auth.signers.get_resource_principals_signer()
+os_client = oci.object_storage.ObjectStorageClient(config={}, signer=signer)
 data_flow_client = oci.data_flow.DataFlowClient(config={}, signer=signer)
 
 def handler(ctx, data: io.BytesIO=None):
@@ -26,7 +27,7 @@ def handler(ctx, data: io.BytesIO=None):
         output = contents["outputPath"]
 
         df_response = call_dataflow(input_csv, columns_to_remove, output)
-        print(str(df_response))
+        # print(str(df_response))
 
     except Exception as e:
         raise Exception(e)
@@ -38,10 +39,10 @@ def handler(ctx, data: io.BytesIO=None):
     )
 
 def get_object(bucketName, objectName):
-    namespace = client.get_namespace().data
+    namespace = os_client.get_namespace().data
     try:
         print("Searching for bucket and object", flush=True)
-        object = client.get_object(namespace, bucketName, objectName)
+        object = os_client.get_object(namespace, bucketName, objectName)
         print("found object", flush=True)
         if object.status == 200:
             print("Success: The object " + objectName + " was retrieved with the content: " + object.data.text, flush=True)
