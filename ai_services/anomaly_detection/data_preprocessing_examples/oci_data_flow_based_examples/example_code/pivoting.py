@@ -16,6 +16,7 @@ class ParseKwargs(argparse.Action):
                 key, value = value.split(":")
                 getattr(namespace, self.dest)[key] = value
 
+
 def spark_pivoting(df, **kwargs):
     """
     Pivot Operation
@@ -26,7 +27,8 @@ def spark_pivoting(df, **kwargs):
         agg: a dictionary
             where key = <column name> and value = <aggregation function>
     """
-    return df.groupBy(kwargs["groupby"]).pivot(kwargs["pivot"]).agg(kwargs["agg"])
+    return df.groupBy(kwargs["groupby"]).pivot(
+        kwargs["pivot"]).agg(kwargs["agg"])
 
 
 if __name__ == "__main__":

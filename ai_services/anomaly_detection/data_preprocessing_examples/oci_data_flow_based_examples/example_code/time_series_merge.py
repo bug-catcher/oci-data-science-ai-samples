@@ -14,6 +14,7 @@ def time_series_merge(df1, df2):
 
     return df1
 
+
 def get_dataflow_spark_session(
     app_name="DataFlow", file_location=None, profile_name=None, spark_config={}
 ):
@@ -55,7 +56,8 @@ def get_dataflow_spark_session(
             "fs.oci.client.hostname",
             f'https://objectstorage.{oci_config["region"]}.oraclecloud.com',
         )
-        spark_builder = SparkSession.builder.appName(app_name).config(conf=conf)
+        spark_builder = SparkSession.builder.appName(
+            app_name).config(conf=conf)
 
     # Add in extra configuration.
     for key, val in spark_config.items():

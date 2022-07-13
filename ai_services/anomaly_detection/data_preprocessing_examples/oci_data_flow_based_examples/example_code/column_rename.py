@@ -3,7 +3,8 @@ from pyspark.sql import SparkSession
 
 
 def column_rename(df, **kwargs):
-    df = df.withColumnRenamed(kwargs["original_column"], kwargs["renamed_column"])
+    df = df.withColumnRenamed(
+        kwargs["original_column"], kwargs["renamed_column"])
     return df
 
 

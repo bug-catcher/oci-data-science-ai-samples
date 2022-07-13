@@ -14,6 +14,7 @@ class ParseKwargs(argparse.Action):
                 key, value = value.split(":")
                 getattr(namespace, self.dest)[key] = value
 
+
 def sharding(df, **kwargs):
     """
     Vertical data sharding
@@ -56,6 +57,7 @@ def sharding(df, **kwargs):
         sharding_dict[output_name] = df_partition
 
     return sharding_dict
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()

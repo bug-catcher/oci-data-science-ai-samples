@@ -14,6 +14,7 @@ def __create_spark_session(session_name):
     spark_session = SparkSession.builder.appName(session_name).getOrCreate()
     return spark_session
 
+
 # The empty **kwargs is for generalization of the function interface
 def format_timestamp(df, **kwargs):
     """
