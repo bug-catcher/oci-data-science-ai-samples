@@ -34,7 +34,7 @@ def one_hot_encoding(df, **kwargs):
             )
             .otherwise(0)
         )
-    return df.drop(category)
+    return distinct_categories, df.drop(category)
 
 
 if __name__ == "__main__":
@@ -55,7 +55,7 @@ if __name__ == "__main__":
     df_input = spark.read.load(
         args.input, format="csv", sep=",", inferSchema="true", header="true"
     )
-    df_output = one_hot_encoding(df_input, **vars(args))
+    _, df_output = one_hot_encoding(df_input, **vars(args))
 
     if args.coalesce:
         df_output.coalesce(1).write.csv(args.output, header=True)
