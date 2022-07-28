@@ -26,6 +26,8 @@ def string_transformation(df, **kwargs):
     column = kwargs["column"]
 
     columns_to_replace = column if column else df.columns
+    columns_to_replace = list(columns_to_replace)
+
     for col in columns_to_replace:
         df = df.withColumn(
             col,
