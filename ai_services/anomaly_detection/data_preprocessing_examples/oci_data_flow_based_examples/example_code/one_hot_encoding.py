@@ -20,11 +20,14 @@ def one_hot_encoding(df, **kwargs):
     category = kwargs["category"]
 
     distinct_categories = None
-    if kwargs['distinct_categories'] is None:
+    if ('distinct_categories' not in kwargs or
+            kwargs['distinct_categories'] is None):
         distinct_categories = list(
             df.select(category).distinct().toPandas()[category])
     else:
-        distinct_categories = list(kwargs["distinct_categories"])
+        distinct_categories = kwargs["distinct_categories"]
+        if isinstance(distinct_categories, str):
+            distinct_categories = distinct_categories.split()
 
     for value in distinct_categories:
         df = df.withColumn(
