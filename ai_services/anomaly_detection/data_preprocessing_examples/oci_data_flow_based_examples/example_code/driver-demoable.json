@@ -1,0 +1,132 @@
+{
+    "inputSources": [
+        {
+            "dataframeName": "S2",
+            "type": "database",
+            "adbId": "ocid1.autonomousdatabase.oc1.phx.anyhqljsor7l3jiabms3ycjjc4j5seh6h43yom4f4oqw3xluxjwdpkby2z4q",
+            "tableName": "DEMO_2ND",
+            "connectionId": "transactionprocessing_high",
+            "user":"admin",
+            "password": "Changemeplease123"
+        },
+        {
+            "dataframeName": "S1",
+            "type": "database",
+            "adbId": "ocid1.autonomousdatabase.oc1.phx.anyhqljtor7l3jiaafhph54js7uz7zrwglmv3ujpicnecymk5r6pk2ncafia",
+            "tableName": "DEMO_1ST",
+            "connectionId": "autonomousdatawarehouse_high",
+            "user":"admin",
+            "password": "Changemeplease123"
+        },
+        {
+            "dataframeName": "S3",
+            "type": "object-storage",
+            "namespace":"ax3dvjxgkemg",
+            "bucket":"raw-data-bucket",
+            "objectName": "demo-3rd.csv"
+        }
+    ],
+    "phaseInfo": {
+        "phase": "train",
+        "connector": {
+            "namespace":"ax3dvjxgkemg",
+            "bucket":"metadata-store",
+            "objectName": "metadata.json"
+        }
+    },
+    "processingSteps": [
+        {
+            "stepType": "singleDataFrameProcessing",
+            "configurations": {
+                "dataframeName": "S1",
+                "steps": [
+                    {
+                        "stepName": "remove_unnecessary_columns",
+                        "args": {
+                            "columns_to_remove":"pressure_100,pressure_101"
+                        }
+                    },
+                    {
+                        "stepName": "column_rename",
+                        "args": {
+                            "original_column": "time_stamp",
+                            "renamed_column": "timestamp"
+                        }
+                    }
+                ]
+            }
+        },
+        {
+            "stepType": "singleDataFrameProcessing",
+            "configurations": {
+                "dataframeName": "S3",
+                "steps": [
+                    {
+                        "stepName": "string_transformation",
+                        "args": {
+                            "find_string": "ZZ",
+                            "replace_string": "Z",
+                            "column": "timestamp"
+                        }
+                    },
+                    {   "stepName": "one_hot_encoding",
+                        "args": {
+                            "category": "location"
+                        }
+                    },
+                    {
+                        "stepName": "remove_unnecessary_columns",
+                        "args": {
+                            "columns_to_remove":"is_Boston,is_Seattle,is_Sacramento"
+                        }
+                    }
+                ]
+            }
+        },
+        {
+            "stepType": "combineDataFrames",
+            "configurations": {
+                "dataframeName": "J1",
+                "type":"join",
+                "joinConfiguration":{
+                    "left":"S1",
+                    "right":"S2",
+                    "column":"timestamp"
+                }
+            }
+        },
+        {
+            "stepType": "combineDataFrames",
+            "configurations": {
+                "dataframeName": "M1",
+                "type":"merge",
+                "mergeConfiguration":{
+                    "left":"J1",
+                    "right":"S3"
+                }
+            }
+        },
+        {
+            "stepType": "singleDataFrameProcessing",
+            "configurations": {
+                "dataframeName": "M1",
+                "steps": [
+                    {
+                        "stepName": "column_rename",
+                        "args": {
+                            "original_column": "timestamp",
+                            "renamed_column": "timestamp_in_utc"
+                        }
+                    }
+                ]
+            }
+        }
+    ],
+    "outputDestination": {
+        "combinedResult":"M1",
+        "type": "object-storage",
+        "namespace":"ax3dvjxgkemg",
+        "bucket": "processed-data-bucket",
+        "folder": "processing_folder"
+    }
+}
