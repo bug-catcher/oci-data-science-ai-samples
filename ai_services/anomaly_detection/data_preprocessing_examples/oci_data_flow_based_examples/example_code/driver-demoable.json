@@ -3,26 +3,26 @@
         {
             "dataframeName": "S2",
             "type": "database",
-            "adbId": "ocid1.autonomousdatabase.oc1.phx.anyhqljsor7l3jiabms3ycjjc4j5seh6h43yom4f4oqw3xluxjwdpkby2z4q",
+            "adbId": "<OCID of ATP>",
             "tableName": "DEMO_2ND",
             "connectionId": "transactionprocessing_high",
             "user":"admin",
-            "password": "Changemeplease123"
+            "password": "<Password>"
         },
         {
             "dataframeName": "S1",
             "type": "database",
-            "adbId": "ocid1.autonomousdatabase.oc1.phx.anyhqljtor7l3jiaafhph54js7uz7zrwglmv3ujpicnecymk5r6pk2ncafia",
+            "adbId": "<OCID of ADW>",
             "tableName": "DEMO_1ST",
             "connectionId": "autonomousdatawarehouse_high",
             "user":"admin",
-            "password": "Changemeplease123"
+            "password": "<Password>"
         },
         {
             "dataframeName": "S3",
             "type": "object-storage",
-            "namespace":"ax3dvjxgkemg",
-            "bucket":"raw-data-bucket",
+            "namespace":"<namespace>",
+            "bucket":"<bucket>",
             "objectName": "demo-3rd.csv"
         }
     ],
@@ -125,8 +125,8 @@
     "outputDestination": {
         "combinedResult":"M1",
         "type": "object-storage",
-        "namespace":"ax3dvjxgkemg",
-        "bucket": "processed-data-bucket",
-        "folder": "processing_folder"
+        "namespace":"<namespace>",
+        "bucket": "<bucket>",
+        "folder": "<path_to_file>"
     }
 }
