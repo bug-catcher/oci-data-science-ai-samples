@@ -24,17 +24,20 @@ from example_code.time_series_join import time_series_join
 
 signer = oci.auth.signers.get_resource_principals_signer()
 data_flow_client = oci.data_flow.DataFlowClient(config={}, signer=signer)
-object_storage_client = oci.object_storage.ObjectStorageClient(config={}, signer=signer)
+object_storage_client = \
+    oci.object_storage.ObjectStorageClient(config={}, signer=signer)
 SINGLE_DATAFRAME_PROCESSING = "singleDataFrameProcessing"
 COMBINE_DATAFRAMES = "combineDataFrames"
 JOIN = "join"
 MERGE = "merge"
 RESERVED_METADATA = ['distinct_categories']
 
+
 def get_token_path(spark):
     token_key = "spark.hadoop.fs.oci.client.auth.delegationTokenPath"
     token_path = spark.sparkContext.getConf().get(token_key)
     return token_path
+
 
 def get_authenticated_client(token_path, client):
     if token_path is None:
@@ -51,9 +54,11 @@ def get_authenticated_client(token_path, client):
         authenticated_client = client(config={}, signer=signer)
     return authenticated_client
 
+
 def get_object(object_storage_client, namespace, bucket, file):
     get_resp = object_storage_client.get_object(namespace, bucket, file)
     return get_resp.data.text
+
 
 def parse_and_process_data_preprocessing_config(object_storage_client, spark, get_resp, output_path):
     dfs = dict()
@@ -93,6 +98,7 @@ def parse_and_process_data_preprocessing_config(object_storage_client, spark, ge
         inference: load the metadata into global variables
         '''
         metadata = dict()
+        sharding_dict = list()
         phaseInfo = contents["phaseInfo"]
         phase = phaseInfo["phase"]
         if phase == "inference":
@@ -124,35 +130,57 @@ def parse_and_process_data_preprocessing_config(object_storage_client, spark, ge
                         elif phase == "inference":
                             step["args"]["distinct_categories"] = metadata["distinct_categories"][step["args"]["category"]]
                             _, dfs[step_config["configurations"]["dataframeName"]] = \
-                            eval(func_name)(dfs[step_config["configurations"]["dataframeName"]], **step["args"])
+                                eval(func_name)(dfs[step_config["configurations"]["dataframeName"]], **step["args"])
+                    # sharding also needs to be specially treated. We need:
+                    # 1. Check whether it's the last one of the processing_steps
+                    # 2. Saving multiple dataframes
+                    # TODO: Check in sharding program to make sure user
+                    elif func_name == "sharding":
+                        step_config_len = len(step_config["configurations"]["steps"]) - 1
+                        if (step_config["configurations"]["steps"]).index(step) != step_config_len:
+                            raise Exception("Sharding must be the last of processing steps")
+                        sharding_dfs = eval(func_name)(dfs[step_config["configurations"]["dataframeName"]], **step["args"])
+                        sharding_dict = list(sharding_dfs.keys())
+                        dfs.update(sharding_dfs)
                     else:
                         dfs[step_config["configurations"]["dataframeName"]] = \
                             eval(func_name)(dfs[step_config["configurations"]["dataframeName"]], **step["args"])
-                
             elif step_config["stepType"] == COMBINE_DATAFRAMES:
                 if step_config["configurations"]["type"] == JOIN:
                     left = dfs[step_config["configurations"]["joinConfiguration"]["left"]]
                     right = dfs[step_config["configurations"]["joinConfiguration"]["right"]]
                     dfs[step_config["configurations"]["dataframeName"]] = time_series_join([left, right])
-                
                 elif step_config["configurations"]["type"] == MERGE:
                     left = dfs[step_config["configurations"]["mergeConfiguration"]["left"]]
-                    right = dfs[step_config["configurations"]["mergeConfiguration"]["right"]]
-                    dfs[step_config["configurations"]["dataframeName"]] = time_series_merge(left, right)
+                    right = \
+                        dfs[step_config["configurations"]["mergeConfiguration"]["right"]]
+                    dfs[step_config["configurations"]["dataframeName"]] = \
+                        time_series_merge(left, right)
 
         # writing it to output destination
-        final_df = dfs[contents["outputDestination"]["combinedResult"]]
-        final_df.coalesce(1).write.csv(output_path, header=True)
+        if (len(sharding_dict) == 0):
+            final_df = dfs[contents["outputDestination"]["combinedResult"]]
+            final_df.coalesce(1).write.csv(output_path, header=True)
+        else:
+            # Sharded dfs
+            idx = 0
+            for df in sharding_dict:
+                final_df = dfs[df]
+                final_df.coalesce(1).write.csv(
+                    output_path+str(idx), header=True)
+                idx += 1
 
         # writing metadata to metadata bucket during train
         if phase == "train":
-            # metadata_connector = f'oci://{phaseInfo["connector"]["bucket"]}@{phaseInfo["connector"]["namespace"]}/{phaseInfo["connector"]["objectName"]}'
-            # with open(metadata_connector, "w") as outfile:
-            #     outfile.write(metadata)
-            object_storage_client.put_object(phaseInfo["connector"]["namespace"], phaseInfo["connector"]["bucket"], phaseInfo["connector"]["objectName"], json.dumps(metadata))
+            object_storage_client.put_object(
+                phaseInfo["connector"]["namespace"],
+                phaseInfo["connector"]["bucket"],
+                phaseInfo["connector"]["objectName"],
+                json.dumps(metadata))
 
     except Exception as e:
         raise Exception(e)
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -162,6 +190,7 @@ if __name__ == "__main__":
 
     spark = SparkSession.builder.appName("DataFlow").getOrCreate()
     token_path = get_token_path(spark)
-    object_storage_client = get_authenticated_client(token_path, oci.object_storage.ObjectStorageClient)
+    object_storage_client = get_authenticated_client(
+        token_path, oci.object_storage.ObjectStorageClient)
     parse_and_process_data_preprocessing_config(
         object_storage_client, spark, args.response, args.output_path)
