@@ -61,7 +61,7 @@ def get_authenticated_client(token_path, client):
 
 def get_object(object_storage_client, namespace, bucket, file):
     get_resp = object_storage_client.get_object(namespace, bucket, file)
-    assert get_resp.status_code in [
+    assert get_resp.status in [
         200,
         201,
     ], f"Unable to get object from {bucket}@{namespace}! Response: {get_resp.text}"
