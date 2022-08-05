@@ -31,6 +31,8 @@ COMBINE_DATAFRAMES = "combineDataFrames"
 JOIN = "join"
 MERGE = "merge"
 RESERVED_METADATA = ['distinct_categories']
+TRAINING = "applyAndFinalize"
+INFERENCING = "apply"
 
 
 def get_token_path(spark):
@@ -42,6 +44,8 @@ def get_token_path(spark):
 def get_authenticated_client(token_path, client):
     if token_path is None:
         # You are running locally, so use our API Key.
+        # TODO: read from local filesystem instead of obj storage in local mode
+        #       support optional profile name. Example: https://github.com/sudharkj/oci-data-science-ai-samples/commit/bedc36f312f3db5990f910d4c93e3b8561412d7a#diff-01004b5cf83417c2b0c1f208746048b2d4931e54ce5b7b55988ba76c285cd439R27-R33
         config = oci.config.from_file()
         authenticated_client = client(config)
     else:
@@ -57,6 +61,10 @@ def get_authenticated_client(token_path, client):
 
 def get_object(object_storage_client, namespace, bucket, file):
     get_resp = object_storage_client.get_object(namespace, bucket, file)
+    assert get_resp.status_code in [
+        200,
+        201,
+    ], f"Unable to get object from {bucket}@{namespace}! Response: {get_resp.text}"
     return get_resp.data.text
 
 
@@ -78,7 +86,7 @@ def parse_and_process_data_preprocessing_config(object_storage_client, spark, ge
                 df = spark.createDataFrame(pd_df)
                 df = df.select([F.col(x).alias(x.lower()) for x in df.columns])
                 dfs[source["dataframeName"]] = df
-            elif source["type"] == "database":
+            elif source["type"] == "oracle":
                 properties = {
                     "adbId": source["adbId"], 
                     "dbtable": source["tableName"],
@@ -101,12 +109,12 @@ def parse_and_process_data_preprocessing_config(object_storage_client, spark, ge
         sharding_dict = list()
         phaseInfo = contents["phaseInfo"]
         phase = phaseInfo["phase"]
-        if phase == "inference":
+        if phase == INFERENCING:
             metadata_dependent_raw = get_object(object_storage_client, phaseInfo["connector"]["namespace"], phaseInfo["connector"]["bucket"], phaseInfo["connector"]["objectName"])
             metadata_dependent = json.loads(metadata_dependent_raw)
             for global_variable in RESERVED_METADATA:
                 metadata[global_variable] = metadata_dependent[global_variable]
-        elif phase == "train":
+        elif phase == TRAINING:
             pass
         else:
             raise Exception("phaseInfo is not correct") 
@@ -121,7 +129,7 @@ def parse_and_process_data_preprocessing_config(object_storage_client, spark, ge
                     # one_hot_encoding is speicifc because it is data dependent transformation
                     if func_name == "one_hot_encoding":
                         # if it's training, we will put all the distinct categories of the specific column to metadata for later usage
-                        if phase == "train":
+                        if phase == TRAINING:
                             distinct_categories, dfs[step_config["configurations"]["dataframeName"]] = \
                             eval(func_name)(dfs[step_config["configurations"]["dataframeName"]], **step["args"])
                             if 'distinct_categories' not in metadata:
@@ -171,7 +179,7 @@ def parse_and_process_data_preprocessing_config(object_storage_client, spark, ge
                 idx += 1
 
         # writing metadata to metadata bucket during train
-        if phase == "train":
+        if phase == TRAINING:
             object_storage_client.put_object(
                 phaseInfo["connector"]["namespace"],
                 phaseInfo["connector"]["bucket"],

@@ -2,7 +2,7 @@
     "inputSources": [
         {
             "dataframeName": "S2",
-            "type": "database",
+            "type": "oracle",
             "adbId": "<OCID of ATP>",
             "tableName": "DEMO_2ND",
             "connectionId": "transactionprocessing_high",
@@ -11,7 +11,7 @@
         },
         {
             "dataframeName": "S1",
-            "type": "database",
+            "type": "oracle",
             "adbId": "<OCID of ADW>",
             "tableName": "DEMO_1ST",
             "connectionId": "autonomousdatawarehouse_high",
