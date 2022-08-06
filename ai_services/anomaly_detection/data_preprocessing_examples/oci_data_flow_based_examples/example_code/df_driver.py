@@ -22,6 +22,9 @@ from example_code.sharding import sharding
 from example_code.time_series_merge import time_series_merge
 from example_code.time_series_join import time_series_join
 
+from ai_services.anomaly_detection.data_preprocessing_examples.oci_data_flow_based_examples.example_code.ad_utils import \
+    AdUtils
+
 signer = oci.auth.signers.get_resource_principals_signer()
 data_flow_client = oci.data_flow.DataFlowClient(config={}, signer=signer)
 object_storage_client = \
@@ -180,6 +183,18 @@ def parse_and_process_data_preprocessing_config(object_storage_client, spark, ge
 
         # writing metadata to metadata bucket during train
         if phase == TRAINING:
+            preprocessed_details = output_path.split('//')[1]
+            preprocessed_details = preprocessed_details.split('/')
+            bucket_details = preprocessed_details[0].split('@')
+            ad_utils = AdUtils(profile_name=phaseInfo['profile_name'], service_endpoint=phaseInfo['service_endpoint'])
+            data_asset_details = {
+                'namespace': bucket_details[1],
+                'bucket': bucket_details[0],
+                'prefix': preprocessed_details[1]
+            }
+            model_ids = ad_utils.train(project_id=phaseInfo['project_id'], compartment_id=phaseInfo['compartment_id'],
+                                       data_assets=data_asset_details)
+            metadata['model_ids'] = model_ids
             object_storage_client.put_object(
                 phaseInfo["connector"]["namespace"],
                 phaseInfo["connector"]["bucket"],
