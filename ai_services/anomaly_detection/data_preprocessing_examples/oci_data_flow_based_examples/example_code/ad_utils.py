@@ -4,80 +4,31 @@ from argparse import ArgumentParser
 from oci.ai_anomaly_detection import AnomalyDetectionClient
 from oci.ai_anomaly_detection.models import CreateModelDetails, ModelTrainingDetails, CreateDataAssetDetails, \
     DataSourceDetailsObjectStorage
-from oci.object_storage import ObjectStorageClient
-from pyspark.sql import SparkSession
-import oci
-import os
 
-DEFAULT_LOCATION = os.path.join('~', '.oci', 'config')
-DEFAULT_PROFILE = "DEFAULT"
+from ai_services.anomaly_detection.data_preprocessing_examples.oci_data_flow_based_examples.example_code. \
+    dataflow_utils import get_authenticated_client, DEFAULT_PROFILE, DEFAULT_LOCATION, DataflowSession
+
 DEFAULT_TARGET_FAP = 0.01
 DEFAULT_TRAINING_FRACTION = 0.7
 
 
-def get_spark_context():
-    return SparkSession.builder.appName("AnomalyDetectionClient").getOrCreate()
-
-
-def get_token_path():
-    sc = get_spark_context()
-    token_key = "spark.hadoop.fs.oci.client.auth.delegationTokenPath"
-    token_path = sc.sparkContext.getConf().get(token_key)
-    return token_path
-
-
-def get_authenticated_client(token_path, client, file_location=DEFAULT_LOCATION, profile_name=DEFAULT_PROFILE,
-                             **kwargs):
-    if token_path is None:
-        # You are running locally, so use our API Key.
-        config = oci.config.from_file(file_location, profile_name)
-        kwargs['config'] = config
-        authenticated_client = client(**kwargs)
-    else:
-        # You are running in Data Flow, so use our Delegation Token.
-        with open(token_path) as fd:
-            delegation_token = fd.read()
-        signer = oci.auth.signers.InstancePrincipalsDelegationTokenSigner(
-            delegation_token=delegation_token
-        )
-        kwargs['config'] = {}
-        kwargs['signer'] = signer
-        authenticated_client = client(**kwargs)
-    return authenticated_client
-
-
 class AdUtils:
-    def __init__(self, profile_name=DEFAULT_PROFILE, service_endpoint=None):
-        token_path = get_token_path()
-
-        client_args = {'profile_name': profile_name}
-        self.obj_client = get_authenticated_client(token_path, ObjectStorageClient, **client_args)
-
+    def __init__(self, dataflow_session, profile_name=DEFAULT_PROFILE, file_location=DEFAULT_LOCATION,
+                 service_endpoint=None):
+        client_args = {
+            'profile_name': profile_name,
+            'file_location': file_location,
+            'dataflow_session': dataflow_session
+        }
         if service_endpoint:
             client_args['service_endpoint'] = service_endpoint
-        self.ad_client = get_authenticated_client(token_path, AnomalyDetectionClient, **client_args)
+        self.ad_client = get_authenticated_client(client=AnomalyDetectionClient, **client_args)
 
-    def train(self, project_id, compartment_id, data_assets, target_fap=DEFAULT_TARGET_FAP,
+    def train(self, project_id, compartment_id, data_asset_detail, target_fap=DEFAULT_TARGET_FAP,
               training_fraction=DEFAULT_TRAINING_FRACTION):
-        assert data_assets['type'] == 'object_storage', "Unknown dataset details"
-        list_objects_response = self.obj_client.list_objects(namespace_name=data_assets['namespace'],
-                                                             bucket_name=data_assets['bucket'],
-                                                             prefix=data_assets['prefix'])
-        assert list_objects_response.status == 200, f'Error listing objects: {list_objects_response.text}'
-        objects_details = list_objects_response.data
-
-        model_ids = []
-        for object_details in objects_details.objects:
-            if object_details.name.endswith('.csv'):
-                data_asset_id = self._create_data_asset_(project_id=project_id, compartment_id=compartment_id,
-                                                         namespace=data_assets['namespace'],
-                                                         bucket=data_assets['bucket'],
-                                                         object_name=object_details.name)
-                model_id = self._create_model_(project_id=project_id, compartment_id=compartment_id,
-                                               data_asset_id=data_asset_id, target_fap=target_fap,
-                                               training_fraction=training_fraction)
-                model_ids.append(model_id)
-        return model_ids
+        data_asset_id = self._create_data_asset_(project_id, compartment_id, data_asset_detail['namespace'],
+                                                 data_asset_detail['bucket'], data_asset_detail['object'])
+        return self._create_model_(project_id, compartment_id, data_asset_id, target_fap, training_fraction)
 
     def _create_data_asset_(self, project_id, compartment_id, namespace, bucket, object_name):
         data_source_details = DataSourceDetailsObjectStorage(namespace=namespace, bucket_name=bucket,
@@ -107,10 +58,12 @@ if __name__ == '__main__':
     parser.add_argument("--target_fap", required=False, type=lambda v: float(v), default=DEFAULT_TARGET_FAP)
     parser.add_argument("--training_fraction", required=False, type=lambda v: float(v),
                         default=DEFAULT_TRAINING_FRACTION)
-    parser.add_argument("--staging", required=True, type=str)
+    parser.add_argument("--data_asset_detail", required=True, type=str)
     args = parser.parse_args()
 
-    ad_utils = AdUtils(profile_name=args.profile_name, service_endpoint=args.service_endpoint)
-    staging = json.loads(str(args.staging))
-    models = ad_utils.train(project_id=args.project_id, compartment_id=args.compartment_id, data_assets=staging)
-    print(f"Model ids: {models}")
+    _dataflow_session = DataflowSession(app_name='AnomalyDetectionClient')
+    ad_utils = AdUtils(_dataflow_session, profile_name=args.profile_name, service_endpoint=args.service_endpoint)
+    _data_asset_detail = json.loads(str(args.data_asset_detail))
+    model_id = ad_utils.train(
+        project_id=args.project_id, compartment_id=args.compartment_id, data_asset_detail=_data_asset_detail)
+    print(f"Model id: {model_id}")
