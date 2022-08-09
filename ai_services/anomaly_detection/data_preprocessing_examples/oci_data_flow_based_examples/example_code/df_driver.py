@@ -8,7 +8,6 @@ from pyspark.sql import functions as F
 from io import StringIO
 from example_code.remove_unnecessary_columns import remove_unnecessary_columns
 from example_code.column_rename import column_rename
-from example_code.one_hot_encoding import one_hot_encoding
 from example_code.string_transformations import string_transformation
 from example_code.format_timestamp import format_timestamp
 from example_code.temporal_differencing import temporal_differencing
@@ -68,7 +67,16 @@ def get_object(object_storage_client, namespace, bucket, file):
     return get_resp.data.text
 
 
-def parse_and_process_data_preprocessing_config(object_storage_client, spark, get_resp, output_path):
+def parse_and_process_data_preprocessing_config(object_storage_client, spark, get_resp, phase, output_path):
+    """
+    Data Preprocessing Operation
+    Args:
+        object_storage_client: the object storage client for communicating with object storage
+        spark: entry point for spark application
+        get_resp: the parsed response from config json
+        phase: the phase info referring training or inferencing
+        output_path: the destination of storing processed csv file(s)
+    """
     dfs = dict()
     try:
         contents = json.loads(get_resp)
@@ -108,7 +116,6 @@ def parse_and_process_data_preprocessing_config(object_storage_client, spark, ge
         metadata = dict()
         sharding_dict = list()
         phaseInfo = contents["phaseInfo"]
-        phase = phaseInfo["phase"]
         if phase == INFERENCING:
             metadata_dependent_raw = get_object(object_storage_client, phaseInfo["connector"]["namespace"], phaseInfo["connector"]["bucket"], phaseInfo["connector"]["objectName"])
             metadata_dependent = json.loads(metadata_dependent_raw)
@@ -150,6 +157,8 @@ def parse_and_process_data_preprocessing_config(object_storage_client, spark, ge
                         sharding_dfs = eval(func_name)(dfs[step_config["configurations"]["dataframeName"]], **step["args"])
                         sharding_dict = list(sharding_dfs.keys())
                         dfs.update(sharding_dfs)
+                    elif func_name == "spark_pivoting":
+                        pass
                     else:
                         dfs[step_config["configurations"]["dataframeName"]] = \
                             eval(func_name)(dfs[step_config["configurations"]["dataframeName"]], **step["args"])
@@ -193,6 +202,7 @@ def parse_and_process_data_preprocessing_config(object_storage_client, spark, ge
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--response", required=True)
+    parser.add_argument("--phase", required=True)
     parser.add_argument("--output_path", required=True)
     args = parser.parse_args()
 
@@ -201,4 +211,4 @@ if __name__ == "__main__":
     object_storage_client = get_authenticated_client(
         token_path, oci.object_storage.ObjectStorageClient)
     parse_and_process_data_preprocessing_config(
-        object_storage_client, spark, args.response, args.output_path)
+        object_storage_client, spark, args.response, args.phase, args.output_path)
