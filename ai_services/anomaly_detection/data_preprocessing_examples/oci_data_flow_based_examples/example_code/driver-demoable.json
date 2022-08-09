@@ -28,14 +28,18 @@
     ],
     "phaseInfo": {
         "phase": "train",
-        "service_endpoint": null,
-        "profile_name": "DEFAULT",
-        "project_id": "<project_id>",
-        "compartment_id": "<compartment_id>",
         "connector": {
             "namespace":"ax3dvjxgkemg",
             "bucket":"metadata-store",
             "objectName": "metadata.json"
+        }
+    },
+    "serviceApiConfiguration": {
+        "anomalyDetection": {
+            "serviceEndpoint": null,
+            "profileName": "DEFAULT",
+            "projectId": "<project_id>",
+            "compartmentId": "<compartment_id>"
         }
     },
     "processingSteps": [

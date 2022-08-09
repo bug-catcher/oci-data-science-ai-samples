@@ -22,10 +22,11 @@ from example_code.sharding import sharding
 from example_code.time_series_merge import time_series_merge
 from example_code.time_series_join import time_series_join
 
-from ai_services.anomaly_detection.data_preprocessing_examples.oci_data_flow_based_examples.example_code \
-    .ad_utils import AdUtils
-from ai_services.anomaly_detection.data_preprocessing_examples.oci_data_flow_based_examples.example_code \
-    .dataflow_utils import DataflowSession, get_spark_context, get_authenticated_client
+from ai_services.anomaly_detection.data_preprocessing_examples. \
+    oci_data_flow_based_examples.example_code.ad_utils import AdUtils
+from ai_services.anomaly_detection.data_preprocessing_examples. \
+    oci_data_flow_based_examples.example_code.dataflow_utils import \
+    DataflowSession, get_spark_context, get_authenticated_client
 
 signer = oci.auth.signers.get_resource_principals_signer()
 dataflow_session = DataflowSession(app_name="DataFlow")
@@ -176,11 +177,16 @@ def parse_and_process_data_preprocessing_config(object_storage_client, spark, ge
                 namespace_name=preprocessed_data_details['namespace'],
                 bucket_name=preprocessed_data_details['bucket'],
                 prefix=preprocessed_data_details['prefix'])
-            assert list_objects_response.status == 200, f'Error listing objects: {list_objects_response.text}'
+            assert list_objects_response.status == 200, \
+                f'Error listing objects: {list_objects_response.text}'
             objects_details = list_objects_response.data
 
             model_ids = []
-            ad_utils = AdUtils(dataflow_session, phaseInfo['profile_name'], phaseInfo['service_endpoint'])
+            api_configuration = \
+                contents["serviceApiConfiguration"]["anomalyDetection"]
+            ad_utils = AdUtils(dataflow_session,
+                               api_configuration['profileName'],
+                               api_configuration['serviceEndpoint'])
             data_asset_detail = preprocessed_data_details
             data_asset_detail.pop('prefix')
             for object_details in objects_details.objects:
@@ -188,7 +194,9 @@ def parse_and_process_data_preprocessing_config(object_storage_client, spark, ge
                     data_asset_detail['object'] = object_details.name
                     try:
                         model_id = ad_utils.train(
-                            phaseInfo['project_id'], phaseInfo['compartment_id'], data_asset_detail)
+                            api_configuration['projectId'],
+                            api_configuration['compartmentId'],
+                            data_asset_detail)
                         model_ids.append(model_id)
                     except Exception as e:
                         print(e)
@@ -211,6 +219,7 @@ if __name__ == "__main__":
 
     spark = get_spark_context(dataflow_session=dataflow_session)
     object_storage_client = get_authenticated_client(
-        client=oci.object_storage.ObjectStorageClient, dataflow_session=dataflow_session)
+        client=oci.object_storage.ObjectStorageClient,
+        dataflow_session=dataflow_session)
     parse_and_process_data_preprocessing_config(
         object_storage_client, spark, args.response, args.output_path)
