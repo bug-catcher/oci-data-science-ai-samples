@@ -16,7 +16,8 @@ def get_spark_context(app_name=SAMPLE_APP_NAME, dataflow_session=None):
     return SparkSession.builder.appName(app_name).getOrCreate()
 
 
-def get_token_path(app_name=SAMPLE_APP_NAME, token_key=SAMPLE_TOKEN_KEY, dataflow_session=None):
+def _get_token_path_(app_name=SAMPLE_APP_NAME, token_key=SAMPLE_TOKEN_KEY,
+                     dataflow_session=None):
     if dataflow_session is not None:
         app_name = dataflow_session.app_name
         token_key = dataflow_session.token_key
@@ -25,14 +26,16 @@ def get_token_path(app_name=SAMPLE_APP_NAME, token_key=SAMPLE_TOKEN_KEY, dataflo
     return spark_context.sparkContext.getConf().get(token_key)
 
 
-def get_authenticated_client(client, app_name=SAMPLE_APP_NAME, token_key=SAMPLE_TOKEN_KEY,
-                             file_location=DEFAULT_LOCATION, profile_name=DEFAULT_PROFILE, dataflow_session=None,
-                             **kwargs):
+def get_authenticated_client(client, app_name=SAMPLE_APP_NAME,
+                             token_key=SAMPLE_TOKEN_KEY,
+                             file_location=DEFAULT_LOCATION,
+                             profile_name=DEFAULT_PROFILE,
+                             dataflow_session=None, **kwargs):
     if dataflow_session is not None:
         app_name = dataflow_session.app_name
         token_key = dataflow_session.token_key
 
-    token_path = get_token_path(app_name, token_key)
+    token_path = _get_token_path_(app_name, token_key)
     if token_path is None:
         # This is local run, so use our API Key.
         config = oci.config.from_file(file_location, profile_name)

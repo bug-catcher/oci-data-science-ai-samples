@@ -198,7 +198,7 @@ def parse_and_process_data_preprocessing_config(object_storage_client, spark, ge
                             api_configuration['compartmentId'],
                             data_asset_detail)
                         model_ids.append(model_id)
-                    except Exception as e:
+                    except AssertionError as e:
                         print(e)
             metadata['model_ids'] = model_ids
             object_storage_client.put_object(
