@@ -77,7 +77,7 @@ def parse_and_process_data_preprocessing_config(object_storage_client, spark, ge
                 dfs[source["dataframeName"]] = df
             elif source["type"] == "oracle":
                 properties = {
-                    "adbId": source["adbId"], 
+                    "adbId": source["adbId"],
                     "dbtable": source["tableName"],
                     "connectionId": source["connectionId"],
                     "user": source["user"],
@@ -97,7 +97,7 @@ def parse_and_process_data_preprocessing_config(object_storage_client, spark, ge
         metadata = dict()
         sharding_dict = list()
         phaseInfo = contents["phaseInfo"]
-        finalizedOutputInfo = contents["outputDestination"]
+        finalized_output_info = contents["outputDestination"]
         staging_namespace = contents["stagingDestination"]["namespace"]
         staging_bucket = contents["stagingDestination"]["bucket"]
         staging_folder = contents["stagingDestination"]["folder"]
@@ -111,8 +111,7 @@ def parse_and_process_data_preprocessing_config(object_storage_client, spark, ge
         elif phase == TRAINING:
             pass
         else:
-            raise Exception("phaseInfo is not correct") 
-
+            raise Exception("phaseInfo is not correct")
 
         # conducting processing steps
         processing_steps = contents["processingSteps"]
@@ -126,14 +125,14 @@ def parse_and_process_data_preprocessing_config(object_storage_client, spark, ge
                         # if it's training, we will put all the distinct categories of the specific column to metadata for later usage
                         if phase == TRAINING:
                             distinct_categories, dfs[step_config["configurations"]["dataframeName"]] = \
-                            eval(func_name)(dfs[step_config["configurations"]["dataframeName"]], **step["args"])
+                                eval(func_name)(dfs[step_config["configurations"]["dataframeName"]], **step["args"])
                             if 'distinct_categories' not in metadata:
                                 metadata["distinct_categories"] = dict()
                             metadata["distinct_categories"][step["args"]["category"]] = distinct_categories
                         elif phase == INFERENCING:
                             step["args"]["distinct_categories"] = metadata["distinct_categories"][step["args"]["category"]]
                             _, dfs[step_config["configurations"]["dataframeName"]] = \
-                                eval(func_name)(dfs[step_config["configurations"]["dataframeName"]], **step["args"])                            
+                                eval(func_name)(dfs[step_config["configurations"]["dataframeName"]], **step["args"])
                     # sharding also needs to be specially treated. We need:
                     # 1. Check whether it's the last one of the processing_steps
                     # 2. Saving multiple dataframes
@@ -147,17 +146,14 @@ def parse_and_process_data_preprocessing_config(object_storage_client, spark, ge
                     # Pivoting also needs specific treatment since it's also a data dependent processing
                     # Usually pivoting will be conducted after merge and joining if multiple datasets involves
                     # If training, we should pick out the distinct item of assigned column and store it inside metadata
-                    # If inferencing, we should read pre-stored distinct_column_values from metadata pass it for pivoting function
+                    # If inferencing, we should read pre-stored distinct_column_values
+                    # from metadata pass it for pivoting function
                     elif func_name == "spark_pivoting":
                         if phase == TRAINING:
                             distinct_column_values, dfs[step_config["configurations"]["dataframeName"]] = \
                                 eval(func_name)(dfs[step_config["configurations"]["dataframeName"]], **step["args"])
                             flat_distinct_column_values = [item for sublist in distinct_column_values for item in sublist]
-                            # if 'distinct_column_values' not in metadata:
                             metadata['distinct_column_values'] = flat_distinct_column_values
-                            # else:
-                            #     for val in flat_distinct_column_values:
-                            #         metadata['distinct_column_values'].append(val)
                         elif phase == INFERENCING:
                             step['args']['distinct_column_values'] = metadata['distinct_column_values']
                             _, dfs[step_config['configurations']['dataframeName']] = \
@@ -185,9 +181,11 @@ def parse_and_process_data_preprocessing_config(object_storage_client, spark, ge
 
         # writing it to output destination
         if (len(sharding_dict) == 0):
-            final_df = dfs[contents["stagingDestinationination"]["combinedResult"]]
+            final_df = dfs[contents[
+                "stagingDestinationination"]["combinedResult"]]
             final_df.coalesce(1).write.csv(staging_path, header=True)
-            preprocessed_data_prefix_to_column[preprocessed_details[1]] = final_df.columns
+            preprocessed_data_prefix_to_column[
+                preprocessed_details[1]] = final_df.columns
         else:
             # Sharded dfs
             idx = 0
@@ -195,7 +193,8 @@ def parse_and_process_data_preprocessing_config(object_storage_client, spark, ge
                 final_df = dfs[df]
                 final_df.coalesce(1).write.csv(
                     staging_path+str(idx), header=True)
-                preprocessed_data_prefix_to_column[preprocessed_details[1]+str(idx)] = final_df.columns
+                preprocessed_data_prefix_to_column[
+                    preprocessed_details[1]+str(idx)] = final_df.columns
                 idx += 1
 
         output_processed_data_info = list()
@@ -255,12 +254,12 @@ def parse_and_process_data_preprocessing_config(object_storage_client, spark, ge
                 json.dumps(metadata))
 
             object_storage_client.put_object(
-                finalizedOutputInfo["namespace"],
-                finalizedOutputInfo["bucket"],
-                finalizedOutputInfo["objectName"],
+                finalized_output_info["namespace"],
+                finalized_output_info["bucket"],
+                finalized_output_info["objectName"],
                 json.dumps(model_ids)
             )
-        
+
         return output_processed_data_info
     except Exception as e:
         raise Exception(e)

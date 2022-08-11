@@ -27,7 +27,7 @@
         }
     ],
     "phaseInfo": {
-        "phase": "train",
+        "phase": "applyAndFinalize",
         "connector": {
             "namespace":"ax3dvjxgkemg",
             "bucket":"metadata-store",
@@ -130,8 +130,14 @@
             }
         }
     ],
-    "outputDestination": {
+    "stagingDestination": {
         "combinedResult":"M1",
+        "type": "object-storage",
+        "namespace":"<namespace>",
+        "bucket": "<bucket>",
+        "folder": "<path_to_file>"
+    }, 
+    "outputDestination": {
         "type": "object-storage",
         "namespace":"<namespace>",
         "bucket": "<bucket>",
