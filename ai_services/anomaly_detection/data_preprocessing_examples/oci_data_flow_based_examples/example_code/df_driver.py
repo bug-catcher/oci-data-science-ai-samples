@@ -119,8 +119,9 @@ def parse_and_process_data_preprocessing_config(object_storage_client, spark, ge
             if step_config["stepType"] == SINGLE_DATAFRAME_PROCESSING:
                 for step in step_config["configurations"]["steps"]:
                     func_name = step["stepName"]
-                    # one_hot_encoding is speicifc because it is data dependent transformation
+                    # one_hot_encoding and sharding are speicifc because it is data dependent transformation
                     # Usually one_hot_encoding will be conducted after merge and joining if multiple datasets involves
+                    # TODO: for both cases, we need to add UNKNOWN category if it doesn't exist in training data
                     if func_name == "one_hot_encoding":
                         # if it's training, we will put all the distinct categories of the specific column to metadata for later usage
                         if phase == TRAINING:
