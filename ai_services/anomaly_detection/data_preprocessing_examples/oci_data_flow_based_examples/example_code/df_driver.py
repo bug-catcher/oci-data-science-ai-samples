@@ -3,7 +3,6 @@ import json
 import argparse
 import pandas as pd
 
-from pyspark.sql import SparkSession
 from pyspark.sql import functions as F
 from io import StringIO
 from example_code.remove_unnecessary_columns import remove_unnecessary_columns
@@ -39,30 +38,6 @@ TRAINING = "applyAndFinalize"
 INFERENCING = "apply"
 
 
-# def get_token_path(spark):
-#     token_key = "spark.hadoop.fs.oci.client.auth.delegationTokenPath"
-#     token_path = spark.sparkContext.getConf().get(token_key)
-#     return token_path
-
-
-# def get_authenticated_client(token_path, client):
-#     if token_path is None:
-#         # You are running locally, so use our API Key.
-#         # TODO: read from local filesystem instead of obj storage in local mode
-#         #       support optional profile name. Example: https://github.com/sudharkj/oci-data-science-ai-samples/commit/bedc36f312f3db5990f910d4c93e3b8561412d7a#diff-01004b5cf83417c2b0c1f208746048b2d4931e54ce5b7b55988ba76c285cd439R27-R33
-#         config = oci.config.from_file()
-#         authenticated_client = client(config)
-#     else:
-#         # You are running in Data Flow, so use our Delegation Token.
-#         with open(token_path) as fd:
-#             delegation_token = fd.read()
-#         signer = oci.auth.signers.InstancePrincipalsDelegationTokenSigner(
-#             delegation_token=delegation_token
-#         )
-#         authenticated_client = client(config={}, signer=signer)
-#     return authenticated_client
-
-
 def get_object(object_storage_client, namespace, bucket, file):
     get_resp = object_storage_client.get_object(namespace, bucket, file)
     assert get_resp.status in [
@@ -72,7 +47,7 @@ def get_object(object_storage_client, namespace, bucket, file):
     return get_resp.data.text
 
 
-def parse_and_process_data_preprocessing_config(object_storage_client, spark, get_resp, phase, output_path):
+def parse_and_process_data_preprocessing_config(object_storage_client, spark, get_resp, phase):
     """
     Data Preprocessing Operation
     Args:
@@ -80,7 +55,8 @@ def parse_and_process_data_preprocessing_config(object_storage_client, spark, ge
         spark: entry point for spark application
         get_resp: the parsed response from config json
         phase: the phase info referring training or inferencing
-        output_path: the destination of storing processed csv file(s)
+        staging_path: the destination of storing processed csv file(s)
+        output_path: the destination of storing finalized output like model information
     """
     dfs = dict()
     try:
@@ -93,12 +69,10 @@ def parse_and_process_data_preprocessing_config(object_storage_client, spark, ge
         # build dictonary: df name: df
         for source in input_sources:
             if source["type"] == "object-storage":
-                # raw_data = get_object(object_storage_client, source["namespace"], source["bucket"], source["objectName"])
-                # data = StringIO(raw_data)
-                # pd_df = pd.read_csv(data, sep=",")
-                # df = spark.createDataFrame(pd_df)
-                raw_data_path = f'oci://{source["bucket"]}@{source["namespace"]}/{source["objectName"]}'
-                df = spark.read.format("csv").option("header", "true").load(raw_data_path)
+                raw_data = get_object(object_storage_client, source["namespace"], source["bucket"], source["objectName"])
+                data = StringIO(raw_data)
+                pd_df = pd.read_csv(data, sep=",")
+                df = spark.createDataFrame(pd_df)
                 df = df.select([F.col(x).alias(x.lower()) for x in df.columns])
                 dfs[source["dataframeName"]] = df
             elif source["type"] == "oracle":
@@ -123,11 +97,15 @@ def parse_and_process_data_preprocessing_config(object_storage_client, spark, ge
         metadata = dict()
         sharding_dict = list()
         phaseInfo = contents["phaseInfo"]
+        finalizedOutputInfo = contents["outputDestination"]
+        staging_namespace = contents["stagingDestination"]["namespace"]
+        staging_bucket = contents["stagingDestination"]["bucket"]
+        staging_folder = contents["stagingDestination"]["folder"]
+        staging_path = f'oci://{staging_bucket}@{staging_namespace}/{staging_folder}'
+
         if phase == INFERENCING:
-            # metadata_dependent_raw = get_object(object_storage_client, phaseInfo["connector"]["namespace"], phaseInfo["connector"]["bucket"], phaseInfo["connector"]["objectName"])
-            # metadata_dependent = json.loads(metadata_dependent_raw)
-            metadata_path = f'oci://{phaseInfo["connector"]["bucket"]}@{phaseInfo["connector"]["namespace"]}/{phaseInfo["connector"]["objectName"]}'
-            metadata_dependent = spark.read.json(metadata_path)
+            metadata_dependent_raw = get_object(object_storage_client, phaseInfo["connector"]["namespace"], phaseInfo["connector"]["bucket"], phaseInfo["connector"]["objectName"])
+            metadata_dependent = json.loads(metadata_dependent_raw)
             for global_variable in RESERVED_METADATA:
                 metadata[global_variable] = metadata_dependent[global_variable]
         elif phase == TRAINING:
@@ -159,7 +137,6 @@ def parse_and_process_data_preprocessing_config(object_storage_client, spark, ge
                     # sharding also needs to be specially treated. We need:
                     # 1. Check whether it's the last one of the processing_steps
                     # 2. Saving multiple dataframes
-                    # TODO: the preprocessor function returns the file name or mapping of columns to file names(staging info)
                     elif func_name == "sharding":
                         step_config_len = len(step_config["configurations"]["steps"]) - 1
                         if (step_config["configurations"]["steps"]).index(step) != step_config_len:
@@ -201,15 +178,15 @@ def parse_and_process_data_preprocessing_config(object_storage_client, spark, ge
                         time_series_merge(left, right)
 
         # prepare the staging file path
-        preprocessed_details = output_path.split('//')[1]
+        preprocessed_details = staging_path.split('//')[1]
         preprocessed_details = preprocessed_details.split('/')
         bucket_details = preprocessed_details[0].split('@')
         preprocessed_data_prefix_to_column = dict()
 
         # writing it to output destination
         if (len(sharding_dict) == 0):
-            final_df = dfs[contents["outputDestination"]["combinedResult"]]
-            final_df.coalesce(1).write.csv(output_path, header=True)
+            final_df = dfs[contents["stagingDestinationination"]["combinedResult"]]
+            final_df.coalesce(1).write.csv(staging_path, header=True)
             preprocessed_data_prefix_to_column[preprocessed_details[1]] = final_df.columns
         else:
             # Sharded dfs
@@ -217,17 +194,13 @@ def parse_and_process_data_preprocessing_config(object_storage_client, spark, ge
             for df in sharding_dict:
                 final_df = dfs[df]
                 final_df.coalesce(1).write.csv(
-                    output_path+str(idx), header=True)
+                    staging_path+str(idx), header=True)
                 preprocessed_data_prefix_to_column[preprocessed_details[1]+str(idx)] = final_df.columns
                 idx += 1
 
         output_processed_data_info = list()
         # writing metadata to metadata bucket during train
         if phase == TRAINING:
-            preprocessed_details = output_path.split('//')[1]
-            preprocessed_details = preprocessed_details.split('/')
-            bucket_details = preprocessed_details[0].split('@')
-
             preprocessed_data_details = {
                 'namespace': bucket_details[1],
                 'bucket': bucket_details[0],
@@ -242,7 +215,7 @@ def parse_and_process_data_preprocessing_config(object_storage_client, spark, ge
                 f'Error listing objects: {list_objects_response.text}'
             objects_details = list_objects_response.data
 
-            model_ids = []
+            model_ids = list()
             api_configuration = \
                 contents["serviceApiConfiguration"]["anomalyDetection"]
             ad_utils = AdUtils(dataflow_session,
@@ -268,17 +241,25 @@ def parse_and_process_data_preprocessing_config(object_storage_client, spark, ge
                             api_configuration['projectId'],
                             api_configuration['compartmentId'],
                             data_asset_detail)
-                        model_ids.append(model_id)
+                        model_ids.append({
+                            "model_id": model_id,
+                            "columns": columns
+                        })
                     except AssertionError as e:
                         print(e)
-            metadata['model_ids'] = model_ids
-            # TODO: delet this one line below!!!!!
-            metadata['test_output'] = output_processed_data_info
+
             object_storage_client.put_object(
                 phaseInfo["connector"]["namespace"],
                 phaseInfo["connector"]["bucket"],
                 phaseInfo["connector"]["objectName"],
                 json.dumps(metadata))
+
+            object_storage_client.put_object(
+                finalizedOutputInfo["namespace"],
+                finalizedOutputInfo["bucket"],
+                finalizedOutputInfo["objectName"],
+                json.dumps(model_ids)
+            )
         
         return output_processed_data_info
     except Exception as e:
@@ -289,16 +270,12 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--response", required=True)
     parser.add_argument("--phase", required=True)
-    parser.add_argument("--output_path", required=True)
     args = parser.parse_args()
 
-    # spark = SparkSession.builder.appName("DataFlow").getOrCreate()
-    # token_path = get_token_path(spark)
     spark = get_spark_context(dataflow_session=dataflow_session)
-    # object_storage_client = get_authenticated_client(
-    #     token_path, oci.object_storage.ObjectStorageClient)
+
     object_storage_client = get_authenticated_client(
         client=oci.object_storage.ObjectStorageClient,
         dataflow_session=dataflow_session)
     parse_and_process_data_preprocessing_config(
-        object_storage_client, spark, args.response, args.phase, args.output_path)
+        object_storage_client, spark, args.response, args.phase)
