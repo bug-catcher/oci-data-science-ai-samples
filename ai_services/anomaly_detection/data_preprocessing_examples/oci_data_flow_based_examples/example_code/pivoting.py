@@ -32,8 +32,7 @@ def spark_pivoting(df, **kwargs):
         groupby = groupby.split()
     agg = kwargs["agg"]
     agg_ops = dict()
-    distinct_column_values = kwargs['distinct_column_values'] if 'distinct_column_values' \
-        in kwargs else None
+    distinct_column_values = kwargs.get('distinct_column_values', None)
 
     if isinstance(agg, str):
         agg = agg.split()

@@ -108,9 +108,7 @@ def parse_and_process_data_preprocessing_config(object_storage_client, spark, ge
             metadata_dependent = json.loads(metadata_dependent_raw)
             for global_variable in RESERVED_METADATA:
                 metadata[global_variable] = metadata_dependent[global_variable]
-        elif phase == TRAINING:
-            pass
-        else:
+        elif phase != TRAINING:
             raise Exception("phaseInfo is not correct")
 
         # conducting processing steps
@@ -119,7 +117,7 @@ def parse_and_process_data_preprocessing_config(object_storage_client, spark, ge
             if step_config["stepType"] == SINGLE_DATAFRAME_PROCESSING:
                 for step in step_config["configurations"]["steps"]:
                     func_name = step["stepName"]
-                    # one_hot_encoding and sharding are speicifc because it is data dependent transformation
+                    # one_hot_encoding and sharding are specific because it is data dependent transformation
                     # Usually one_hot_encoding will be conducted after merge and joining if multiple datasets involves
                     # TODO: for both cases, we need to add UNKNOWN category if it doesn't exist in training data
                     if func_name == "one_hot_encoding":
@@ -175,18 +173,21 @@ def parse_and_process_data_preprocessing_config(object_storage_client, spark, ge
                         time_series_merge(left, right)
 
         # prepare the staging file path
-        preprocessed_details = staging_path.split('//')[1]
-        preprocessed_details = preprocessed_details.split('/')
-        bucket_details = preprocessed_details[0].split('@')
+        # preprocessed_details = staging_path.split('//')[1]
+        # preprocessed_details = preprocessed_details.split('/')
+        # bucket_details = preprocessed_details[0].split('@')
+        staging_namespace = contents["stagingDestination"]["namespace"]
+        staging_bucket = contents["stagingDestination"]["bucket"]
+        staging_folder = contents["stagingDestination"]["folder"]
         preprocessed_data_prefix_to_column = dict()
 
         # writing it to output destination
         if (len(sharding_dict) == 0):
             final_df = dfs[contents[
-                "stagingDestinationination"]["combinedResult"]]
+                "stagingDestination"]["combinedResult"]]
             final_df.coalesce(1).write.csv(staging_path, header=True)
             preprocessed_data_prefix_to_column[
-                preprocessed_details[1]] = final_df.columns
+                staging_folder] = final_df.columns
         else:
             # Sharded dfs
             idx = 0
@@ -195,16 +196,16 @@ def parse_and_process_data_preprocessing_config(object_storage_client, spark, ge
                 final_df.coalesce(1).write.csv(
                     staging_path+str(idx), header=True)
                 preprocessed_data_prefix_to_column[
-                    preprocessed_details[1]+str(idx)] = final_df.columns
+                    staging_folder+str(idx)] = final_df.columns
                 idx += 1
 
         output_processed_data_info = list()
         # writing metadata to metadata bucket during train
         if phase == TRAINING:
             preprocessed_data_details = {
-                'namespace': bucket_details[1],
-                'bucket': bucket_details[0],
-                'prefix': preprocessed_details[1]
+                'namespace': staging_namespace,
+                'bucket': staging_bucket,
+                'prefix': staging_folder
             }
 
             list_objects_response = object_storage_client.list_objects(
@@ -232,8 +233,8 @@ def parse_and_process_data_preprocessing_config(object_storage_client, spark, ge
                     data_asset_detail['object'] = object_details.name
                     output_processed_data_info.append({
                         "object": object_details.name,
-                        "namespace": bucket_details[1],
-                        "bucket": bucket_details[0],
+                        "namespace": staging_namespace,
+                        "bucket": staging_bucket,
                         "columns": columns
                     })
                     try:
