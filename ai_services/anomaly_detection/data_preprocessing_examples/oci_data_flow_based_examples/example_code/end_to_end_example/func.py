@@ -18,11 +18,13 @@ def handler(ctx, data: io.BytesIO=None):
     if bucketName == "raw-data-bucket":
         config_bucket_name = "training-config-bucket"
         object_name = "driver-demoable-complete-v2.json"
+        resp = get_object(namespace, config_bucket_name, object_name)
+        call_dataflow(resp, "applyAndFinalize")
     elif bucketName == "inferencing-data-bucket":
         config_bucket_name = "inferencing-config-bucket"
         object_name = "driver-demoable-complete-v2.json"
-    resp = get_object(namespace, config_bucket_name, object_name)
-    call_dataflow(resp)
+        resp = get_object(namespace, config_bucket_name, object_name)
+        call_dataflow(resp, "apply")
 
 def get_object(namespace, bucket, file):
     get_resp = object_storage_client.get_object(namespace, bucket, file)
