@@ -24,11 +24,6 @@ from example_code.ad_utils import AdUtils
 from example_code.dataflow_utils import DataflowSession, get_spark_context, get_authenticated_client
 
 
-signer = oci.auth.signers.get_resource_principals_signer()
-dataflow_session = DataflowSession(app_name="DataFlow")
-data_flow_client = oci.data_flow.DataFlowClient(config={}, signer=signer)
-object_storage_client = \
-    oci.object_storage.ObjectStorageClient(config={}, signer=signer)
 SINGLE_DATAFRAME_PROCESSING = "singleDataFrameProcessing"
 COMBINE_DATAFRAMES = "combineDataFrames"
 JOIN = "join"
