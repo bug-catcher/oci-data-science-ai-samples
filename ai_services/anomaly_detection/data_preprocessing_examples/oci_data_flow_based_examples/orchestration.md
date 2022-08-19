@@ -50,6 +50,29 @@ to see how to create compartment if there is no compartment yet. Steps are also 
    ```
    ![](images/create_dynamic_group.png)
 
+### Create object storage bucket
+
+This step can be skipped if Object Storage Bucket is already available.
+
+1. Click the hamburger menu.
+   ![](images/hamburger_menu.png)
+2. Select *Storage* tab and select *Buckets* under *Object Storage & Archive Storage* section.
+   ![](images/buckets_tab.png)
+3. Select desired compartment and click *Create Bucket* button.
+   ![](images/create_bucket_button.png)
+4. Add bucket name, select *Emit Object Events*, and then click on *Create* button.
+   ![](images/create_bucket.png)
+
+### Emit Object Events
+
+This step can be skipped if the bucket is created using the above steps or using an existing bucket that has emit 
+object events enabled.
+
+After you created the bucket, don't foregt to enable `Emit Object Events` under bucket details page. Without this,
+Events Service won't be able to catch any object related events.
+
+![](./utils/enable_emit_os.png)
+
 ### Add policy statements
 
 Note that for convenience, *any-user* is used here, but it can be replaced with group or dynamic group for a limited
@@ -119,13 +142,6 @@ policy and adding all the statements to one policy.
    ![](images/create_policy.png)
 
 See [README.md](./README.md) for additional details.
-
-### Prepare an object storage bucket.
-
-After you created the bucket, don't foregt to enable `Emit Object Events` under bucket details page. Without this,
-Events Service won't be able to catch any object related events.
-
-![](./utils/enable_emit_os.png)
 
 ### Create and deploy function
 
