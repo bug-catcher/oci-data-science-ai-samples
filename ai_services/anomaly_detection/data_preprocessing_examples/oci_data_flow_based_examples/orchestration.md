@@ -68,10 +68,9 @@ This step can be skipped if Object Storage Bucket is already available.
 This step can be skipped if the bucket is created using the above steps or using an existing bucket that has emit 
 object events enabled.
 
-After you created the bucket, don't foregt to enable `Emit Object Events` under bucket details page. Without this,
-Events Service won't be able to catch any object related events.
-
-![](./utils/enable_emit_os.png)
+1. Navigate to the object-storage bucket of concern and click on *Emit Object Events* button.
+   ![](images/emit_object_events_edit_button.png)
+2. Select *Emit Object Events* checkbox and click on *Save Changes*.
 
 ### Add policy statements
 
@@ -87,37 +86,37 @@ Below are all the policy statements needed.
 
 1. Object Storage
     ```bash
-    Allow any-user to manage objects in COMPARTMENT <compartment>
-    Allow service faas to manage objects in COMPARTMENT <compartment>
+    Allow any-user to manage objects in compartment <compartment>
+    Allow service faas to manage objects in compartment <compartment>
     ```
 2. Oracle Functions
     ```bash
-    Allow any-user to manage repos IN COMPARTMENT <compartment>
-    Allow any-user to read objectstorage-namespaces IN COMPARTMENT <compartment>
-    Allow any-user to manage logging-family IN COMPARTMENT <compartment>
-    Allow any-user to read metrics IN COMPARTMENT <compartment>
-    Allow any-user to manage functions-family IN COMPARTMENT <compartment>
-    Allow any-user to use virtual-network-family IN COMPARTMENT <compartment>
-    Allow any-user to use apm-domains IN COMPARTMENT <compartment>
-    Allow any-user to read vaults IN COMPARTMENT <compartment>
-    Allow any-user to use keys IN COMPARTMENT <compartment>
-    Allow service faas to use dataflow-family in COMPARTMENT <compartment>
-    Allow service faas to use apm-domains IN COMPARTMENT <compartment>
-    Allow service faas to read repos IN COMPARTMENT <compartment> where request.operation='ListContainerImageSignatures'
-    Allow service faas to {KEY_READ} IN COMPARTMENT <compartment> where request.operation='GetKeyVersion'
-    Allow service faas to {KEY_VERIFY} IN COMPARTMENT <compartment> where request.operation='Verify'
+    Allow any-user to manage repos in compartment <compartment>
+    Allow any-user to read objectstorage-namespaces in compartment <compartment>
+    Allow any-user to manage logging-family in compartment <compartment>
+    Allow any-user to read metrics in compartment <compartment>
+    Allow any-user to manage functions-family in compartment <compartment>
+    Allow any-user to use virtual-network-family in compartment <compartment>
+    Allow any-user to use apm-domains in compartment <compartment>
+    Allow any-user to read vaults in compartment <compartment>
+    Allow any-user to use keys in compartment <compartment>
+    Allow service faas to use dataflow-family in compartment <compartment>
+    Allow service faas to use apm-domains in compartment <compartment>
+    Allow service faas to read repos in compartment <compartment> where request.operation='ListContainerImageSignatures'
+    Allow service faas to {KEY_READ} in compartment <compartment> where request.operation='GetKeyVersion'
+    Allow service faas to {KEY_VERIFY} in compartment <compartment> where request.operation='Verify'
     Allow dynamic-group <dynamic-group-name> to manage all-resources in compartment <compartment>
     ```
 3. Events Service
     ```bash
-    Allow any-user to inspect compartments in COMPARTMENT <compartment>
-    Allow any-user to inspect streams in COMPARTMENT <compartment>
-    Allow any-user to use stream-push in COMPARTMENT <compartment>
-    Allow any-user to use stream-pull in COMPARTMENT <compartment>
-    Allow any-user to use virtual-network-family in COMPARTMENT <compartment>
-    Allow any-user to manage function-family in COMPARTMENT <compartment>
-    Allow any-user to use ons-topic in COMPARTMENT <compartment>
-    Allow any-user to manage cloudevents-rules in COMPARTMENT <compartment>
+    Allow any-user to inspect compartments in compartment <compartment>
+    Allow any-user to inspect streams in compartment <compartment>
+    Allow any-user to use stream-push in compartment <compartment>
+    Allow any-user to use stream-pull in compartment <compartment>
+    Allow any-user to use virtual-network-family in compartment <compartment>
+    Allow any-user to manage function-family in compartment <compartment>
+    Allow any-user to use ons-topic in compartment <compartment>
+    Allow any-user to manage cloudevents-rules in compartment <compartment>
     ```
 4. Cloud shell
     ```bash
