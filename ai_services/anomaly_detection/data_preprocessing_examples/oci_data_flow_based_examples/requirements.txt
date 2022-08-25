@@ -2,3 +2,7 @@
 /opt/dataflow/prepackaged_df-1.0-py3-none-any.whl
 oci==2.70.1+preview.1.1420
 pandas==1.1.5
+
+setuptools~=49.6.0
+numpy~=1.19.5
+pyspark~=3.0.2

@@ -210,8 +210,6 @@ def parse_and_process_data_preprocessing_config(object_storage_client, spark, co
             f'Error listing objects: {list_objects_response.text}'
         objects_details = list_objects_response.data
 
-        api_configuration = \
-            contents["serviceApiConfiguration"]["anomalyDetection"]
         data_asset_detail = preprocessed_data_details
         data_asset_detail.pop('prefix')
         for object_details in objects_details.objects:
@@ -261,7 +259,7 @@ if __name__ == "__main__":
     ad_utils = AdUtils(dataflow_session,
                        api_configuration['profileName'],
                        api_configuration['serviceEndpoint'])
-    if args.phase == "applyAndFinalize":
+    if args.phase == TRAINING:
         result = {}
         for data_asset_detail in staging_info:
             try:
@@ -281,7 +279,7 @@ if __name__ == "__main__":
             outputInfo["bucket"],
             outputInfo["folder"],
             json.dumps(result))
-    elif args.phase == "apply":
+    elif args.phase == INFERENCING:
         outputInfo = config["outputDestination"]
         ad_utils.infer(compartment_id=api_configuration["compartmentId"],
                        model_id=api_configuration["modelId"],
