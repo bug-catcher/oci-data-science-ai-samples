@@ -1,10 +1,13 @@
 import json
-from argparse import ArgumentParser
+import backoff
 
+from argparse import ArgumentParser
 from oci.ai_anomaly_detection import AnomalyDetectionClient
 from oci.ai_anomaly_detection.models import CreateModelDetails, \
     ModelTrainingDetails, CreateDataAssetDetails, \
     DataSourceDetailsObjectStorage
+from requests.exceptions import ConnectionError, RequestException, Timeout
+from requests.structures import CaseInsensitiveDict
 
 from example_code.dataflow_utils import \
     get_authenticated_client, DEFAULT_PROFILE, DEFAULT_LOCATION, \
@@ -12,6 +15,8 @@ from example_code.dataflow_utils import \
 
 DEFAULT_TARGET_FAP = 0.01
 DEFAULT_TRAINING_FRACTION = 0.7
+OPC_REQUEST_ID_KEY = "opc-request-id"
+OPC_WORK_REQUEST_ID_KEY = "opc-work-request-id"
 
 
 class AdUtils:
@@ -24,8 +29,11 @@ class AdUtils:
         }
         if service_endpoint:
             client_args['service_endpoint'] = service_endpoint
+            print(f"Will override AnomalyDetectionClient's endpoint with {service_endpoint}.")
+
         self.ad_client = get_authenticated_client(
             client=AnomalyDetectionClient, **client_args)
+        print("Successfully created AdUtils object to interact with Anomaly Detection Service!!!")
 
     def train(self, project_id, compartment_id, data_asset_detail,
               target_fap=DEFAULT_TARGET_FAP,
@@ -33,8 +41,9 @@ class AdUtils:
         data_asset_id = self._create_data_asset_(
             project_id, compartment_id, data_asset_detail['namespace'],
             data_asset_detail['bucket'], data_asset_detail['object'])
-        return self._create_model_(project_id, compartment_id, data_asset_id,
-                                   target_fap, training_fraction)
+        print(f"Create data asset with ocid [{data_asset_id}]!")
+
+        return self._train_model_(project_id, compartment_id, data_asset_id, target_fap, training_fraction)
 
     def _create_data_asset_(self, project_id, compartment_id, namespace,
                             bucket, object_name):
@@ -43,14 +52,31 @@ class AdUtils:
         create_data_asset_details = CreateDataAssetDetails(
             compartment_id=compartment_id, project_id=project_id,
             data_source_details=data_source_details)
+
         data_asset_create_response = self.ad_client.create_data_asset(
             create_data_asset_details)
-        assert data_asset_create_response.status == 200, \
-            f"Error creating data-asset: {data_asset_create_response.text}"
+        print(f"Create data-asset request received "
+              f"status [{data_asset_create_response.status}] "
+              f"opc-request-id [{get_header_value(data_asset_create_response.headers, OPC_REQUEST_ID_KEY)}]")
+        assert data_asset_create_response.status == 200, f"Error creating data-asset: {data_asset_create_response.text}"
+
         return data_asset_create_response.data.id
 
-    def _create_model_(self, project_id, compartment_id, data_asset_id,
-                       target_fap, training_fraction):
+    @backoff.on_exception(backoff.expo, (RequestException, Timeout, ConnectionError, AssertionError))
+    def is_work_request_success(self, work_request_id):
+        work_request = self.ad_client.get_work_request(work_request_id)
+
+        print(f"Get work-request received "
+              f"status [{work_request.status}] "
+              f"opc-request-id [{get_header_value(work_request.headers, OPC_REQUEST_ID_KEY)}]")
+        assert work_request.status == 200, f"Error creating data-asset: {work_request.text}"
+
+        print(f"{work_request_id} is in {work_request.data.status} state")
+        assert work_request.data.status in {"FAILED", "SUCCEEDED", "CANCELED"}
+        return work_request.data.status == "SUCCEEDED"
+
+    def _train_model_(self, project_id, compartment_id, data_asset_id,
+                      target_fap, training_fraction):
         model_training_details = ModelTrainingDetails(
             target_fap=target_fap, training_fraction=training_fraction,
             data_asset_ids=[data_asset_id])
@@ -59,9 +85,22 @@ class AdUtils:
             model_training_details=model_training_details)
         create_model_response = self.ad_client.create_model(
             create_model_details)
+        print(f"Create model request received "
+              f"status [{create_model_response.status}] "
+              f"opc-request-id [{get_header_value(create_model_response.headers, OPC_REQUEST_ID_KEY)}]")
         assert create_model_response.status == 201, \
             f"Error creating model: {create_model_response.text}"
-        return create_model_response.data.id
+
+        model_id = create_model_response.data.id
+        work_request_id = get_header_value(create_model_response.headers, OPC_WORK_REQUEST_ID_KEY)
+
+        assert self.is_work_request_success(work_request_id), f"Unable to train model [{model_id}]!"
+        print(f"Successfully trained model [{model_id}!!!")
+        return model_id
+
+
+def get_header_value(headers: CaseInsensitiveDict, header_key: str):
+    return headers.get(header_key, f"<NO-{header_key.upper()}>")
 
 
 if __name__ == '__main__':
@@ -84,7 +123,7 @@ if __name__ == '__main__':
     ad_utils = AdUtils(_dataflow_session, profile_name=args.profile_name,
                        service_endpoint=args.service_endpoint)
     _data_asset_detail = json.loads(str(args.data_asset_detail))
-    model_id = ad_utils.train(
+    _model_id = ad_utils.train(
         project_id=args.project_id, compartment_id=args.compartment_id,
         data_asset_detail=_data_asset_detail)
-    print(f"Model id: {model_id}")
+    print(f"Successfully trained model [{_model_id}] using {_data_asset_detail}")
