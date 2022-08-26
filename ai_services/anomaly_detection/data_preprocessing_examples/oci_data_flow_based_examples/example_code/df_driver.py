@@ -1,3 +1,5 @@
+import traceback
+
 import oci
 import json
 import argparse
@@ -6,6 +8,8 @@ import pandas as pd
 from pyspark.sql import functions as F
 from datetime import datetime
 from io import StringIO
+
+from example_code.content_delivery import ContentDeliveryFactory, ObjectStorageHelper
 from example_code.remove_unnecessary_columns import remove_unnecessary_columns
 from example_code.column_rename import column_rename
 from example_code.string_transformations import string_transformation
@@ -48,7 +52,7 @@ def get_object(object_storage_client, namespace, bucket, file):
     return get_resp.data.text
 
 
-def parse_and_process_data_preprocessing_config(object_storage_client, spark, contents, phase):
+def parse_and_process_data_preprocessing_config(object_storage_client, spark, contents, phase, event_data=None):
     """
     Data Preprocessing Operation
     Args:
@@ -56,36 +60,43 @@ def parse_and_process_data_preprocessing_config(object_storage_client, spark, co
         spark: entry point for spark application
         contents: the parsed response from config json
         phase: the phase info referring training or inferencing
+        event_data: Information of the event that triggered the run
     """
     dfs = dict()
     try:
         '''
         Deal with input sources
         '''
-        input_sources = contents["inputSources"]
+        if event_data is not None and 'source' in event_data:
+            content_delivery_client = ContentDeliveryFactory.get(event_data['source'], dataflow_session)
+            dfs[contents["stagingDestination"]["combinedResult"]] = content_delivery_client.get_df(event_data)
 
-        # build dictionary: df name: df
-        for source in input_sources:
-            if source["type"] == "object-storage":
-                raw_data = get_object(object_storage_client, source["namespace"], source["bucket"], source["objectName"])
-                data = StringIO(raw_data)
-                pd_df = pd.read_csv(data, sep=",")
-                df = spark.createDataFrame(pd_df)
-                df = df.select([F.col(x).alias(x.lower()) for x in df.columns])
-                dfs[source["dataframeName"]] = df
-            elif source["type"] == "oracle":
-                properties = {
-                    "adbId": source["adbId"],
-                    "dbtable": source["tableName"],
-                    "connectionId": source["connectionId"],
-                    "user": source["user"],
-                    "password": source["password"]}
-                df = spark.read \
-                    .format("oracle") \
-                    .options(**properties) \
-                    .load()
-                df = df.select([F.col(x).alias(x.lower()) for x in df.columns])
-                dfs[source["dataframeName"]] = df
+        else:
+            input_sources = contents["inputSources"]
+
+            # build dictionary: df name: df
+            for source in input_sources:
+                if source["type"] == "object-storage":
+                    object_details = {
+                        'namespace': source["namespace"],
+                        'bucket': source["bucket"],
+                        'object': source["objectName"],
+                    }
+                    content_delivery_client = ContentDeliveryFactory.get(ObjectStorageHelper.SOURCE, dataflow_session)
+                    dfs[source["dataframeName"]] = content_delivery_client.get_df(object_details)
+                elif source["type"] == "oracle":
+                    properties = {
+                        "adbId": source["adbId"],
+                        "dbtable": source["tableName"],
+                        "connectionId": source["connectionId"],
+                        "user": source["user"],
+                        "password": source["password"]}
+                    df = spark.read \
+                        .format("oracle") \
+                        .options(**properties) \
+                        .load()
+                    df = df.select([F.col(x).alias(x.lower()) for x in df.columns])
+                    dfs[source["dataframeName"]] = df
 
         '''
         Check the phase
@@ -238,8 +249,18 @@ def parse_and_process_data_preprocessing_config(object_storage_client, spark, co
         raise Exception(e)
 
 
+def ctx_event_data(value):
+    try:
+        value = json.loads(value)
+        return value if len(value) > 0 else None
+    except Exception as exception:
+        print(exception)
+        return None
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
+    parser.add_argument("--event_data", required=False, type=ctx_event_data)
     parser.add_argument("--response", required=True)
     parser.add_argument("--phase", required=True)
     args = parser.parse_args()
@@ -251,7 +272,7 @@ if __name__ == "__main__":
         dataflow_session=dataflow_session)
     config = json.loads(args.response)
     staging_info = parse_and_process_data_preprocessing_config(
-        object_storage_client, spark, config, args.phase)
+        object_storage_client, spark, config, args.phase, args.event_data)
 
     model_ids = []
     api_configuration = \
