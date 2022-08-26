@@ -280,7 +280,7 @@ if __name__ == "__main__":
     ad_utils = AdUtils(dataflow_session,
                        api_configuration['profileName'],
                        api_configuration['serviceEndpoint'])
-    if args.phase == TRAINING:
+    if args.phase == "applyAndFinalize":
         result = {}
         for data_asset_detail in staging_info:
             try:
@@ -300,7 +300,7 @@ if __name__ == "__main__":
             outputInfo["bucket"],
             outputInfo["folder"],
             json.dumps(result))
-    elif args.phase == INFERENCING:
+    elif args.phase == "apply":
         outputInfo = config["outputDestination"]
         ad_utils.infer(compartment_id=api_configuration["compartmentId"],
                        model_id=api_configuration["modelId"],
