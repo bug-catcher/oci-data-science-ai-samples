@@ -5,7 +5,7 @@ from argparse import ArgumentParser
 from oci.ai_anomaly_detection import AnomalyDetectionClient
 from oci.ai_anomaly_detection.models import CreateModelDetails, \
     ModelTrainingDetails, CreateDataAssetDetails, \
-    DataSourceDetailsObjectStorage
+    DataSourceDetailsObjectStorage, WorkRequest
 from requests.exceptions import ConnectionError, RequestException, Timeout
 from requests.structures import CaseInsensitiveDict
 
@@ -17,6 +17,10 @@ DEFAULT_TARGET_FAP = 0.01
 DEFAULT_TRAINING_FRACTION = 0.7
 OPC_REQUEST_ID_KEY = "opc-request-id"
 OPC_WORK_REQUEST_ID_KEY = "opc-work-request-id"
+
+WORK_REQUEST_SUCCESS_STATES = {WorkRequest.STATUS_SUCCEEDED}
+WORK_REQUEST_NON_SUCCESS_STATES = {WorkRequest.STATUS_FAILED, WorkRequest.STATUS_CANCELED}
+WORK_REQUEST_TERMINAL_STATES = WORK_REQUEST_SUCCESS_STATES | WORK_REQUEST_NON_SUCCESS_STATES
 
 
 class AdUtils:
@@ -63,17 +67,17 @@ class AdUtils:
         return data_asset_create_response.data.id
 
     @backoff.on_exception(backoff.expo, (RequestException, Timeout, ConnectionError, AssertionError))
-    def is_work_request_success(self, work_request_id):
+    @backoff.on_predicate(backoff.constant, lambda status: status not in WORK_REQUEST_TERMINAL_STATES, interval=120)
+    def _poll_work_request_(self, work_request_id):
         work_request = self.ad_client.get_work_request(work_request_id)
 
         print(f"Get work-request received "
               f"status [{work_request.status}] "
               f"opc-request-id [{get_header_value(work_request.headers, OPC_REQUEST_ID_KEY)}]")
-        assert work_request.status == 200, f"Error creating data-asset: {work_request.text}"
+        assert work_request.status == 200, f"Error getting work-request information: {work_request.text}"
 
         print(f"{work_request_id} is in {work_request.data.status} state")
-        assert work_request.data.status in {"FAILED", "SUCCEEDED", "CANCELED"}
-        return work_request.data.status == "SUCCEEDED"
+        return work_request.data.status
 
     def _train_model_(self, project_id, compartment_id, data_asset_id,
                       target_fap, training_fraction):
@@ -94,7 +98,8 @@ class AdUtils:
         model_id = create_model_response.data.id
         work_request_id = get_header_value(create_model_response.headers, OPC_WORK_REQUEST_ID_KEY)
 
-        assert self.is_work_request_success(work_request_id), f"Unable to train model [{model_id}]!"
+        assert self._poll_work_request_(work_request_id) in WORK_REQUEST_SUCCESS_STATES, \
+            f"Unable to train model [{model_id}]!"
         print(f"Successfully trained model [{model_id}!!!")
         return model_id
 
