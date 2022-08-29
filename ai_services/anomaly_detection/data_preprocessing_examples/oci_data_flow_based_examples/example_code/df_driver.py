@@ -70,36 +70,36 @@ def parse_and_process_data_preprocessing_config(object_storage_client, spark, ge
         '''
         Deal with input sources
         '''
-        if event_data is not None and 'source' in event_data:
-            content_delivery_client = ContentDeliveryFactory.get(event_data['source'], dataflow_session)
-            dfs[contents["stagingDestination"]["combinedResult"]] = content_delivery_client.get_df(event_data)
+        input_sources = contents["inputSources"]
+        event_type_input_sources = [1 for source in input_sources if source['type'] == "event"]
+        assert len(event_type_input_sources) <= 1, "At-most 1 event type input-source is supported!"
 
-        else:
-            input_sources = contents["inputSources"]
-
-            # build dictonary: df name: df
-            for source in input_sources:
-                if source["type"] == "object-storage":
-                    object_details = {
-                        'namespace': source["namespace"],
-                        'bucket': source["bucket"],
-                        'object': source["objectName"],
-                    }
-                    content_delivery_client = ContentDeliveryFactory.get(ObjectStorageHelper.SOURCE, dataflow_session)
-                    dfs[source["dataframeName"]] = content_delivery_client.get_df(object_details)
-                elif source["type"] == "oracle":
-                    properties = {
-                        "adbId": source["adbId"],
-                        "dbtable": source["tableName"],
-                        "connectionId": source["connectionId"],
-                        "user": source["user"],
-                        "password": source["password"]}
-                    df = spark.read \
-                        .format("oracle") \
-                        .options(**properties) \
-                        .load()
-                    df = df.select([F.col(x).alias(x.lower()) for x in df.columns])
-                    dfs[source["dataframeName"]] = df
+        # build dictonary: df name: df
+        for source in input_sources:
+            if source['type'] == "event":
+                content_delivery_client = ContentDeliveryFactory.get(event_data['source'], dataflow_session)
+                dfs[source['dataframeName']] = content_delivery_client.get_df(event_data)
+            elif source["type"] == "object-storage":
+                object_details = {
+                    'namespace': source["namespace"],
+                    'bucket': source["bucket"],
+                    'object': source["objectName"],
+                }
+                content_delivery_client = ContentDeliveryFactory.get(ObjectStorageHelper.SOURCE, dataflow_session)
+                dfs[source["dataframeName"]] = content_delivery_client.get_df(object_details)
+            elif source["type"] == "oracle":
+                properties = {
+                    "adbId": source["adbId"],
+                    "dbtable": source["tableName"],
+                    "connectionId": source["connectionId"],
+                    "user": source["user"],
+                    "password": source["password"]}
+                df = spark.read \
+                    .format("oracle") \
+                    .options(**properties) \
+                    .load()
+                df = df.select([F.col(x).alias(x.lower()) for x in df.columns])
+                dfs[source["dataframeName"]] = df
 
         '''
         Check the phase

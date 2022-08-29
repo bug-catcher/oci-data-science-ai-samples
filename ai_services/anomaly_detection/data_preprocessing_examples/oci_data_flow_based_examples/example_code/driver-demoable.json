@@ -24,6 +24,10 @@
             "namespace":"<namespace>",
             "bucket":"<bucket>",
             "objectName": "demo-3rd.csv"
+        },
+        {
+            "dataframeName": "S4",
+            "type": "event"
         }
     ],
     "phaseInfo": {
