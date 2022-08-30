@@ -9,6 +9,9 @@ from example_code.dataflow_utils import get_authenticated_client, DataflowSessio
 
 
 class ContentDeliveryFactory:
+    """
+    ContentDeliveryFactory returns database specific helper and contains common methods for the helpers.
+    """
 
     def __init__(self, dataflow_session: DataflowSession):
         self.dataflow_session = dataflow_session
@@ -33,6 +36,9 @@ class ContentDeliveryFactory:
 
 
 class ObjectStorageHelper(ContentDeliveryFactory):
+    """
+    ObjectStorageHelper is an Object-Storage specific helper that contains methods for getting and putting objects.
+    """
     SOURCE = "ObjectStorage"
 
     def __init__(self, dataflow_session: DataflowSession):
