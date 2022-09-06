@@ -3,7 +3,6 @@ import traceback
 import oci
 import json
 import argparse
-import pandas as pd
 
 from pyspark.sql import functions as F
 from datetime import datetime
@@ -52,21 +51,18 @@ def get_object(object_storage_client, namespace, bucket, file):
     return get_resp.data.text
 
 
-def parse_and_process_data_preprocessing_config(object_storage_client, spark, get_resp, phase, event_data=None):
+def parse_and_process_data_preprocessing_config(object_storage_client, spark, contents, phase, event_data=None):
     """
     Data Preprocessing Operation
     Args:
         object_storage_client: the object storage client for communicating with object storage
         spark: entry point for spark application
-        get_resp: the parsed response from config json
+        contents: the parsed response from config json
         phase: the phase info referring training or inferencing
-        staging_path: the destination of storing processed csv file(s)
-        output_path: the destination of storing finalized output like model information
         event_data: Information of the event that triggered the run
     """
     dfs = dict()
     try:
-        contents = json.loads(get_resp)
         '''
         Deal with input sources
         '''
@@ -74,7 +70,7 @@ def parse_and_process_data_preprocessing_config(object_storage_client, spark, ge
         event_type_input_sources = [1 for source in input_sources if source['type'] == "event"]
         assert len(event_type_input_sources) <= 1, "At-most 1 event type input-source is supported!"
 
-        # build dictonary: df name: df
+        # build dictionary: df name: df
         for source in input_sources:
             if source['type'] == "event":
                 content_delivery_client = ContentDeliveryFactory.get(event_data['source'], dataflow_session)
@@ -118,10 +114,14 @@ def parse_and_process_data_preprocessing_config(object_storage_client, spark, ge
         staging_path = f'oci://{staging_bucket}@{staging_namespace}/{staging_folder}'
 
         if phase == INFERENCING:
-            metadata_dependent_raw = get_object(object_storage_client, phaseInfo["connector"]["namespace"], phaseInfo["connector"]["bucket"], phaseInfo["connector"]["objectName"])
+            metadata_dependent_raw = get_object(object_storage_client,
+                                                phaseInfo["connector"]["namespace"],
+                                                phaseInfo["connector"]["bucket"],
+                                                phaseInfo["connector"]["objectName"])
             metadata_dependent = json.loads(metadata_dependent_raw)
             for global_variable in RESERVED_METADATA:
-                metadata[global_variable] = metadata_dependent[global_variable]
+                if global_variable in metadata_dependent:
+                    metadata[global_variable] = metadata_dependent[global_variable]
         elif phase != TRAINING:
             raise Exception("phaseInfo is not correct")
 
@@ -135,7 +135,8 @@ def parse_and_process_data_preprocessing_config(object_storage_client, spark, ge
                     # Usually one_hot_encoding will be conducted after merge and joining if multiple datasets involves
                     # TODO: for both cases, we need to add UNKNOWN category if it doesn't exist in training data
                     if func_name == "one_hot_encoding":
-                        # if it's training, we will put all the distinct categories of the specific column to metadata for later usage
+                        # if it's training, we will put all the distinct categories of the specific column
+                        # to metadata for later usage
                         if phase == TRAINING:
                             distinct_categories, dfs[step_config["configurations"]["dataframeName"]] = \
                                 eval(func_name)(dfs[step_config["configurations"]["dataframeName"]], **step["args"])
@@ -190,12 +191,10 @@ def parse_and_process_data_preprocessing_config(object_storage_client, spark, ge
         preprocessed_data_prefix_to_column = dict()
 
         # writing it to output destination
-        if (len(sharding_dict) == 0):
-            final_df = dfs[contents[
-                "stagingDestination"]["combinedResult"]]
+        if len(sharding_dict) == 0:
+            final_df = dfs[contents["stagingDestination"]["combinedResult"]]
             final_df.coalesce(1).write.csv(staging_path, header=True)
-            preprocessed_data_prefix_to_column[
-                staging_folder] = final_df.columns
+            preprocessed_data_prefix_to_column[staging_folder] = final_df.columns
         else:
             # Sharded dfs
             idx = 0
@@ -208,68 +207,43 @@ def parse_and_process_data_preprocessing_config(object_storage_client, spark, ge
                 idx += 1
 
         output_processed_data_info = list()
-        # writing metadata to metadata bucket during train
-        if phase == TRAINING:
-            preprocessed_data_details = {
-                'namespace': staging_namespace,
-                'bucket': staging_bucket,
-                'prefix': staging_folder
+        preprocessed_data_details = {
+            'namespace': staging_namespace,
+            'bucket': staging_bucket,
+            'prefix': staging_folder + uniquifier
             }
 
-            list_objects_response = object_storage_client.list_objects(
-                namespace_name=preprocessed_data_details['namespace'],
-                bucket_name=preprocessed_data_details['bucket'],
-                prefix=preprocessed_data_details['prefix'])
-            assert list_objects_response.status == 200, \
-                f'Error listing objects: {list_objects_response.text}'
-            objects_details = list_objects_response.data
+        list_objects_response = object_storage_client.list_objects(
+            namespace_name=preprocessed_data_details['namespace'],
+            bucket_name=preprocessed_data_details['bucket'],
+            prefix=preprocessed_data_details['prefix'])
+        assert list_objects_response.status == 200, \
+            f'Error listing objects: {list_objects_response.text}'
+        objects_details = list_objects_response.data
 
-            model_ids = list()
-            api_configuration = \
-                contents["serviceApiConfiguration"]["anomalyDetection"]
-            ad_utils = AdUtils(dataflow_session,
-                               api_configuration['profileName'],
-                               api_configuration['serviceEndpoint'])
-            data_asset_detail = preprocessed_data_details
-            data_asset_detail.pop('prefix')
-            for object_details in objects_details.objects:
-                if object_details.name.endswith('.csv'):
-                    prefix = object_details.name.split('/')[0]
-                    if prefix not in preprocessed_data_prefix_to_column:
-                        continue
-                    columns = preprocessed_data_prefix_to_column[prefix]
-                    data_asset_detail['object'] = object_details.name
-                    output_processed_data_info.append({
-                        "object": object_details.name,
-                        "namespace": staging_namespace,
-                        "bucket": staging_bucket,
-                        "columns": columns
-                    })
-                    try:
-                        model_id = ad_utils.train(
-                            api_configuration['projectId'],
-                            api_configuration['compartmentId'],
-                            data_asset_detail)
-                        model_ids.append({
-                            "model_id": model_id,
-                            "columns": columns
-                        })
-                    except AssertionError as e:
-                        print(e)
-
+        data_asset_detail = preprocessed_data_details
+        data_asset_detail.pop('prefix')
+        for object_details in objects_details.objects:
+            if object_details.name.endswith('.csv'):
+                prefix = object_details.name.split('/')[0]
+                if prefix not in preprocessed_data_prefix_to_column:
+                    continue
+                columns = preprocessed_data_prefix_to_column[prefix]
+                data_asset_detail['object'] = object_details.name
+                output_processed_data_info.append({
+                    "object": object_details.name,
+                    "namespace": staging_namespace,
+                    "bucket": staging_bucket,
+                    "columns": columns
+                })
+        print(output_processed_data_info)
+        # writing metadata to metadata bucket during train
+        if phase == TRAINING:
             object_storage_client.put_object(
                 phaseInfo["connector"]["namespace"],
                 phaseInfo["connector"]["bucket"],
                 phaseInfo["connector"]["objectName"],
                 json.dumps(metadata))
-
-            object_storage_client.put_object(
-                finalized_output_info["namespace"],
-                finalized_output_info["bucket"],
-                finalized_output_info["objectName"],
-                json.dumps(model_ids)
-            )
-
         return output_processed_data_info
     except Exception as e:
         raise Exception(e)
@@ -296,5 +270,43 @@ if __name__ == "__main__":
     object_storage_client = get_authenticated_client(
         client=oci.object_storage.ObjectStorageClient,
         dataflow_session=dataflow_session)
-    parse_and_process_data_preprocessing_config(
-        object_storage_client, spark, args.response, args.phase)
+    config = json.loads(args.response)
+    staging_info = parse_and_process_data_preprocessing_config(
+        object_storage_client, spark, config, args.phase)
+
+    model_ids = []
+    api_configuration = \
+        config["serviceApiConfiguration"]["anomalyDetection"]
+    ad_utils = AdUtils(dataflow_session,
+                       api_configuration['profileName'],
+                       api_configuration['serviceEndpoint'])
+    outputInfo = config["outputDestination"]
+    if args.phase == "applyAndFinalize":
+        result = {}
+        for data_asset_detail in staging_info:
+            try:
+                model_id = ad_utils.train(
+                    api_configuration['projectId'],
+                    api_configuration['compartmentId'],
+                    data_asset_detail)
+                model_ids.append({
+                    "model_id": model_id,
+                    "columns": data_asset_detail["columns"]})
+            except AssertionError as e:
+                print(e)
+        result['model_ids'] = model_ids
+        object_storage_client.put_object(
+            outputInfo["namespace"],
+            outputInfo["bucket"],
+            outputInfo["folder"],
+            json.dumps(result, default=lambda o: o.__dict__, indent=4))
+    elif args.phase == "apply":
+        model_ids_serialized = get_object(object_storage_client,
+                               outputInfo["namespace"],
+                               outputInfo["bucket"],
+                               outputInfo["folder"])
+        model_ids = json.loads(model_ids_serialized)
+        ad_utils.infer(compartment_id=api_configuration["compartmentId"],
+                       model_ids=model_ids,
+                       staging_details=staging_info,
+                       output_path=outputInfo["bucket"])
