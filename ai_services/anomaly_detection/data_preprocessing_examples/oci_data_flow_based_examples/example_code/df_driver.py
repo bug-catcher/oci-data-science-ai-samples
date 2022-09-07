@@ -4,9 +4,7 @@ import oci
 import json
 import argparse
 
-from pyspark.sql import functions as F
 from datetime import datetime
-from io import StringIO
 
 from example_code.content_delivery import ContentDeliveryFactory, ObjectStorageHelper
 from example_code.remove_unnecessary_columns import remove_unnecessary_columns
@@ -76,23 +74,11 @@ def parse_and_process_data_preprocessing_config(object_storage_client, spark, co
         for source in input_sources:
             if 'isEventDriven' in source and source['isEventDriven']:
                 content_delivery_client = ContentDeliveryFactory.get(source["type"], dataflow_session)
-                dfs[source['dataframeName']] = content_delivery_client.get_df(event_data)
-            elif source["type"] == "object-storage":
-                content_delivery_client = ContentDeliveryFactory.get(ObjectStorageHelper.SOURCE, dataflow_session)
+                dfs[source['dataframeName']] = content_delivery_client.get_df(content_details=event_data,
+                                                                              content_validation=source)
+            else:
+                content_delivery_client = ContentDeliveryFactory.get(source["type"], dataflow_session)
                 dfs[source["dataframeName"]] = content_delivery_client.get_df(source)
-            elif source["type"] == "oracle":
-                properties = {
-                    "adbId": source["adbId"],
-                    "dbtable": source["tableName"],
-                    "connectionId": source["connectionId"],
-                    "user": source["user"],
-                    "password": source["password"]}
-                df = spark.read \
-                    .format("oracle") \
-                    .options(**properties) \
-                    .load()
-                df = df.select([F.col(x).alias(x.lower()) for x in df.columns])
-                dfs[source["dataframeName"]] = df
 
         '''
         Check the phase

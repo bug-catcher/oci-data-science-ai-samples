@@ -17,6 +17,8 @@ class ContentDeliveryFactory:
         source = ''.join(source.split('-')).lower()  # Remove any minus from string and convert to lower-case
         if source == ObjectStorageHelper.SOURCE.lower():
             return ObjectStorageHelper(dataflow_session)
+        if source == AutonomousDatabaseHelper.SOURCE.lower():
+            return AutonomousDatabaseHelper(dataflow_session)
         raise NotImplementedError(f"{source} is not supported!")
 
 
@@ -83,4 +85,25 @@ class ObjectStorageHelper(ContentDeliveryHelper):
         else:
             raise Exception(f"Attempting to load {content_details['objectName']}. "
                             f"Only csv and parquet files can be read from {self.SOURCE} at this time!")
+        return df.select([F.col(x).alias(x.lower()) for x in df.columns])
+
+
+class AutonomousDatabaseHelper(ContentDeliveryHelper):
+    """
+    AutonomousDatabaseHelper is an ATP/ADW specific helper that contains methods for getting and putting dataframes.
+    """
+    SOURCE = "Oracle"
+    ALLOWED_CONTENT_DETAILS_KEYS = {"adbId", "dbtable", "connectionId", "user", "password"}
+
+    def __init__(self, dataflow_session: DataflowSession):
+        super().__init__(dataflow_session)
+        print("Initialized content-delivery ObjectStorageHelper class")
+
+    def get_df(self, content_details: dict, content_validation: dict = None):
+        assert 'eventType' not in content_details and content_validation is None, \
+            "Events/table-patterns is not yet supported for Oracle Autonomous Database!"
+
+        options = {key: content_details[key] for key in self.ALLOWED_CONTENT_DETAILS_KEYS}
+        spark_context = get_spark_context(dataflow_session=self.dataflow_session)
+        df = spark_context.read.format("oracle").options(**options).load()
         return df.select([F.col(x).alias(x.lower()) for x in df.columns])
