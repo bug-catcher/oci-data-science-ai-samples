@@ -97,7 +97,7 @@ class AutonomousDatabaseHelper(ContentDeliveryHelper):
 
     def __init__(self, dataflow_session: DataflowSession):
         super().__init__(dataflow_session)
-        print("Initialized content-delivery ObjectStorageHelper class")
+        print("Initialized content-delivery AutonomousDatabaseHelper class")
 
     def get_df(self, content_details: dict, content_validation: dict = None):
         assert 'eventType' not in content_details and content_validation is None, \
