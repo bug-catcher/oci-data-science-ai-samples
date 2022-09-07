@@ -25,10 +25,6 @@
             "bucket":"<bucket>",
             "isEventDriven": true,
             "objectName": "folder/*"
-        },
-        {
-            "dataframeName": "S4",
-            "type": "event"
         }
     ],
     "phaseInfo": {
