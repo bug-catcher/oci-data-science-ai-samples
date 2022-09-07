@@ -13,6 +13,8 @@ from requests.structures import CaseInsensitiveDict
 from oci.ai_anomaly_detection.models import CreateDetectAnomalyJobDetails, \
     DetectAnomalyJob, ObjectListInputDetails, ObjectLocation, \
     ObjectStoreOutputDetails
+
+from example_code.content_delivery import ObjectStorageHelper
 from example_code.dataflow_utils import \
     get_authenticated_client, DEFAULT_PROFILE, DEFAULT_LOCATION, \
     DataflowSession
@@ -222,10 +224,14 @@ if __name__ == '__main__':
             data_asset_detail=_data_asset_detail)
         print(f"Successfully trained model [{model_id}] using data-asset [{_data_asset_detail}]")
     elif args.subparser_name == "infer":
+        _staging_details = {
+            "namespace": args.namespace,
+            "bucket": args.bucket,
+            "objectName": args.object
+        }
         ad_utils.infer(compartment_id=args.compartment_id,
-                       model_id=args.model_id,
-                       staging_details=[{"namespace": args.namespace,
-                                         "bucket": args.bucket,
-                                         "object": args.object}],
+                       model_ids=args.model_id,
+                       staging_details=[_staging_details],
                        output_path=args.output_path)
-        print(f"Successfully called detect on model [{args.model_id}] with data [oci://{args.bucket}/{args.namespace}/{args.object}")
+        print(f"Successfully called detect on model [{args.model_id}] with "
+              f"data [{ObjectStorageHelper.get_content_url(_staging_details)}")

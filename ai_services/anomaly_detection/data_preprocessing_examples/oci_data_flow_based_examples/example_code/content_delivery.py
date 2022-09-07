@@ -1,16 +1,12 @@
 from abc import abstractmethod
-from io import StringIO
 from pyspark.sql import functions as F
 
-import oci
-import pandas as pd
-
-from example_code.dataflow_utils import get_authenticated_client, DataflowSession, get_spark_context
+from example_code.dataflow_utils import DataflowSession, get_spark_context
 
 
 class ContentDeliveryFactory:
     """
-    ContentDeliveryFactory returns database specific helper and contains common methods for the helpers.
+    ContentDeliveryFactory returns database specific ContentDeliveryHelper.
     """
 
     def __init__(self, dataflow_session: DataflowSession):
@@ -18,43 +14,77 @@ class ContentDeliveryFactory:
 
     @staticmethod
     def get(source, dataflow_session: DataflowSession):
-        if source == ObjectStorageHelper.SOURCE:
+        source = ''.join(source.split('-')).lower()  # Remove any minus from string and convert to lower-case
+        if source == ObjectStorageHelper.SOURCE.lower():
             return ObjectStorageHelper(dataflow_session)
         raise NotImplementedError(f"{source} is not supported!")
 
+
+class ContentDeliveryHelper:
+    """
+    ContentDeliveryHelper is a base helper that contains abstract methods for getting and putting dataframes.
+    """
+
+    def __init__(self, dataflow_session: DataflowSession):
+        print("Initialized base content-delivery helper")
+        self.dataflow_session = dataflow_session
+
     @abstractmethod
-    def get_df(self, event_data: dict):
+    def get_df(self, content_details: dict, content_validation: dict = None):
         pass
 
-    def to_df(self, raw_content: str):
-        data = StringIO(raw_content)
-        pd_df = pd.read_csv(data, sep=",")
 
-        spark_context = get_spark_context(dataflow_session=self.dataflow_session)
-        df = spark_context.createDataFrame(pd_df)
-        return df.select([F.col(x).alias(x.lower()) for x in df.columns])
-
-
-class ObjectStorageHelper(ContentDeliveryFactory):
+class ObjectStorageHelper(ContentDeliveryHelper):
     """
-    ObjectStorageHelper is an Object-Storage specific helper that contains methods for getting and putting objects.
+    ObjectStorageHelper is an Object-Storage specific helper that contains methods for getting and putting dataframes.
     """
     SOURCE = "ObjectStorage"
 
     def __init__(self, dataflow_session: DataflowSession):
         super().__init__(dataflow_session)
-        self.object_storage_client = get_authenticated_client(oci.object_storage.ObjectStorageClient,
-                                                              dataflow_session=dataflow_session)
+        print("Initialized content-delivery ObjectStorageHelper class")
 
-    def get_df(self, event_data: dict):
-        if 'eventType' in event_data:
-            namespace = event_data['data']['additionalDetails']['namespace']
-            bucket = event_data['data']['additionalDetails']['bucketName']
-            object_name = event_data['data']['resourceName']
+    @staticmethod
+    def get_content_url(content_details: dict):
+        return f"oci://{content_details['bucket']}@{content_details['namespace']}/{content_details['objectName']}"
+
+    def get_df(self, content_details: dict, content_validation: dict = None):
+        if 'eventType' in content_details:
+            print("Loading dataframe triggered by events!")
+            try:
+                assert content_validation['isEventDriven'], \
+                    "Attempting to get input-source from event without enabling event in driver config!"
+                assert content_details['data']['additionalDetails']['namespace'] == content_validation['namespace'], \
+                    f"Triggered event has namespace other than the expected one."
+                assert content_details['data']['additionalDetails']['bucket'] == content_validation['bucket'], \
+                    f"Triggered event has bucket other than the expected one."
+
+                object_prefix = content_validation['objectName'].split('*')[0]
+                assert content_details['data']['resourceName'].startswith(object_prefix), \
+                    f"Triggered event has objectName not matching the regex."
+
+                content_details = {
+                    'namespace': content_details['data']['additionalDetails']['namespace'],
+                    'bucket': content_details['data']['additionalDetails']['bucket'],
+                    'objectName': content_details['data']['resourceName'],
+                }
+            except Exception as e:
+                print(f"Unable to load object from event information: {e}")
+                raise e
+
+        options = {'header': 'True'}
+        spark_context = get_spark_context(dataflow_session=self.dataflow_session)
+        content_url = self.get_content_url(content_details)
+
+        if content_details['objectName'].endswith(".csv"):
+            df = spark_context.read.options(**options).csv(content_url)
+        elif content_details['objectName'].endswith(".parquet"):
+            df = spark_context.read.options(**options).parquet(content_url)
         else:
-            namespace = event_data['namespace']
-            bucket = event_data['bucket']
-            object_name = event_data['object']
+            raise Exception(f"Attempting to load {content_details['objectName']}. "
+                            f"Only csv and parquet files can be read from {self.SOURCE} at this time!")
+        return df.select([F.col(x).alias(x.lower()) for x in df.columns])
+
 
         get_resp = self.object_storage_client.get_object(namespace, bucket, object_name)
         assert get_resp.status in [

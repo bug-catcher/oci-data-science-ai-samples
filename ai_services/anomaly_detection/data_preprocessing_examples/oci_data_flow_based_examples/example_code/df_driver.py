@@ -67,22 +67,19 @@ def parse_and_process_data_preprocessing_config(object_storage_client, spark, co
         Deal with input sources
         '''
         input_sources = contents["inputSources"]
-        event_type_input_sources = [1 for source in input_sources if source['type'] == "event"]
-        assert len(event_type_input_sources) <= 1, "At-most 1 event type input-source is supported!"
+        event_driven_input_sources = \
+            [1 for source in input_sources if 'isEventDriven' in source and source['isEventDriven']]
+        assert len(event_driven_input_sources) <= 1, \
+            f"At-most 1 event driven input-source is supported! But {len(event_driven_input_sources)} are provided."
 
         # build dictionary: df name: df
         for source in input_sources:
-            if source['type'] == "event":
-                content_delivery_client = ContentDeliveryFactory.get(event_data['source'], dataflow_session)
+            if 'isEventDriven' in source and source['isEventDriven']:
+                content_delivery_client = ContentDeliveryFactory.get(source["type"], dataflow_session)
                 dfs[source['dataframeName']] = content_delivery_client.get_df(event_data)
             elif source["type"] == "object-storage":
-                object_details = {
-                    'namespace': source["namespace"],
-                    'bucket': source["bucket"],
-                    'object': source["objectName"],
-                }
                 content_delivery_client = ContentDeliveryFactory.get(ObjectStorageHelper.SOURCE, dataflow_session)
-                dfs[source["dataframeName"]] = content_delivery_client.get_df(object_details)
+                dfs[source["dataframeName"]] = content_delivery_client.get_df(source)
             elif source["type"] == "oracle":
                 properties = {
                     "adbId": source["adbId"],
@@ -201,16 +198,16 @@ def parse_and_process_data_preprocessing_config(object_storage_client, spark, co
             for df in sharding_dict:
                 final_df = dfs[df]
                 final_df.coalesce(1).write.csv(
-                    staging_path+str(idx), header=True)
+                    staging_path + str(idx), header=True)
                 preprocessed_data_prefix_to_column[
-                    staging_folder+str(idx)] = final_df.columns
+                    staging_folder + str(idx)] = final_df.columns
                 idx += 1
 
         output_processed_data_info = list()
         preprocessed_data_details = {
             'namespace': staging_namespace,
             'bucket': staging_bucket,
-            'prefix': staging_folder + uniquifier
+            'prefix': staging_folder
             }
 
         list_objects_response = object_storage_client.list_objects(
