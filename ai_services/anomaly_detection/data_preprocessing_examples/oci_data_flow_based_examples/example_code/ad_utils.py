@@ -5,19 +5,15 @@ import time
 from argparse import ArgumentParser
 from oci.ai_anomaly_detection import AnomalyDetectionClient
 from oci.ai_anomaly_detection.models import CreateModelDetails, \
-    ModelTrainingDetails, CreateDataAssetDetails, \
-    DataSourceDetailsObjectStorage, WorkRequest
+    ModelTrainingDetails, CreateDataAssetDetails, WorkRequest, \
+    CreateDetectAnomalyJobDetails, DetectAnomalyJob, ObjectListInputDetails, \
+    ObjectLocation, ObjectStoreOutputDetails, DataSourceDetailsObjectStorage
 from requests.exceptions import ConnectionError, RequestException, Timeout
 from requests.structures import CaseInsensitiveDict
 
-from oci.ai_anomaly_detection.models import CreateDetectAnomalyJobDetails, \
-    DetectAnomalyJob, ObjectListInputDetails, ObjectLocation, \
-    ObjectStoreOutputDetails
-
 from example_code.content_delivery import ObjectStorageHelper
-from example_code.dataflow_utils import \
-    get_authenticated_client, DEFAULT_PROFILE, DEFAULT_LOCATION, \
-    DataflowSession
+from example_code.dataflow_utils import get_authenticated_client, \
+    DEFAULT_PROFILE, DEFAULT_LOCATION, DataflowSession
 
 DEFAULT_TARGET_FAP = 0.01
 DEFAULT_TRAINING_FRACTION = 0.7
@@ -155,12 +151,12 @@ class AdUtils:
                 model_columns = '.'.join(str(col) for col in model_columns)
                 if model_columns == columns:
                     matching_model_id = model_info["model_id"]
-            assert matching_model_id != "",\
+            assert matching_model_id != "", \
                 f"Columns not matching, schema does not match training dataset"
             create_job = self.create_detect_anomalies_job(compartment_id,
-                                             matching_model_id,
-                                             data_asset_detail,
-                                             output_path)
+                                                          matching_model_id,
+                                                          data_asset_detail,
+                                                          output_path)
             jobs.append(create_job.id)
         retries = 0
         while jobs and retries < 10:

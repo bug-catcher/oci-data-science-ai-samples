@@ -84,11 +84,3 @@ class ObjectStorageHelper(ContentDeliveryHelper):
             raise Exception(f"Attempting to load {content_details['objectName']}. "
                             f"Only csv and parquet files can be read from {self.SOURCE} at this time!")
         return df.select([F.col(x).alias(x.lower()) for x in df.columns])
-
-
-        get_resp = self.object_storage_client.get_object(namespace, bucket, object_name)
-        assert get_resp.status in [
-            200,
-            304,
-        ], f"Unable to get content from /n/{namespace}/b/{bucket}/o/{object_name}! Response: {get_resp.text}"
-        return self.to_df(get_resp.data.text)
