@@ -88,7 +88,6 @@ def parse_and_process_data_preprocessing_config(object_storage_client, spark, co
         metadata = dict()
         sharding_dict = list()
         phaseInfo = contents["phaseInfo"]
-        finalized_output_info = contents["outputDestination"]
         # appending the staging folder with timestamp to differentiate between different requests.
         contents["stagingDestination"]["folder"] += datetime.now().strftime("_%d_%m_%Y_%H_%M_%S")
         staging_namespace = contents["stagingDestination"]["namespace"]
